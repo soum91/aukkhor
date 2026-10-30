@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Aukkhor TV</string>
+    <string name="ime_name">Aukkhor TV Keyboard</string>
+    <string name="notification_channel">iPhone keyboard bridge</string>
+</resources>
