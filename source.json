@@ -1,0 +1,9 @@
+{
+  "name": "Aukkhor",
+  "identifier": "dev.soum91.aukkhor.source",
+  "subtitle": "English and Bangla keyboard for iPhone",
+  "description": "Unsigned Aukkhor IPA builds for signing in FlareStore or EmberSign. Includes a Windows clipboard and one-time-code companion.",
+  "sourceURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/repo.json",
+  "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
+  "apps": []
+}
