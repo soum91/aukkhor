@@ -73,7 +73,8 @@ struct AukkhorHome: View {
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
                     KeyboardThemePreview(preset: keyboardPreset,
                                          accent: keyboardPreset == .custom ? accentColor : nil,
-                                         photo: keyboardPreset == .custom ? themePhoto : nil)
+                                         photo: keyboardPreset == .custom ? themePhoto : nil,
+                                         cornerRadius: CGFloat(cornerRadius))
                     if keyboardPreset == .custom {
                         ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
                             .onChange(of: accentColor) { newColor in
@@ -163,7 +164,7 @@ struct AukkhorHome: View {
                     }
                 }
             }
-            .navigationTitle("Aukkhor · বর্ণ")
+            .navigationTitle("Aukkhor · অক্ষর")
         }
         .task(id: clipboardSync && scenePhase == .active) {
             guard clipboardSync && scenePhase == .active else { return }
@@ -242,6 +243,7 @@ private struct KeyboardThemePreview: View {
     let preset: KeyboardPreset
     let accent: Color?
     let photo: UIImage?
+    let cornerRadius: CGFloat
 
     private var colors: (Color, Color, Color, Color) {
         switch preset {
