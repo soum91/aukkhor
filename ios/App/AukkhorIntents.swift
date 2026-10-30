@@ -33,7 +33,7 @@ struct AukkhorShortcuts: AppShortcutsProvider {
                     phrases: ["Send clipboard with \(.applicationName)"],
                     shortTitle: "Send clipboard", systemImageName: "doc.on.clipboard")
         AppShortcut(intent: ForwardAukkhorCodeIntent(),
-                    phrases: ["Forward \(\.$messageText) with \(.applicationName)"],
+                    phrases: ["Forward a code with \(.applicationName)"],
                     shortTitle: "Forward code", systemImageName: "number.square")
     }
 }
