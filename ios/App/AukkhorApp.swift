@@ -33,6 +33,13 @@ struct AukkhorHome: View {
     @State private var selectedBackground: PhotosPickerItem?
     @State private var themePhoto = KeyboardPreferences.backgroundImage
     @State private var backgroundStatus = ""
+    @State private var tvHost = AukkhorTVSettings.host
+    @State private var tvFingerprint = AukkhorTVSettings.fingerprint
+    @State private var tvPairCode = ""
+    @State private var tvStatus = "Pair with Android TV to start remote typing."
+    @State private var tvAutoPrompt = AukkhorTVSettings.promptEnabled
+    @State private var lastTVSession = ""
+    @State private var tvPrompt: AukkhorTVPrompt?
 
     var body: some View {
         NavigationStack {
@@ -48,6 +55,36 @@ struct AukkhorHome: View {
                     Button(busy ? "Pairing…" : "Pair securely") { Task { await pair() } }
                         .disabled(busy)
                     Text(status).font(.footnote).foregroundStyle(.secondary)
+                }
+
+                Section("Android TV keyboard and iPhone typing") {
+                    TextField("TV IPv4 (e.g. 192.168.1.50)", text: $tvHost)
+                        .textInputAutocapitalization(.never)
+                        .keyboardType(.numbersAndPunctuation)
+                        .autocorrectionDisabled()
+                    TextField("TV certificate SHA-256 fingerprint", text: $tvFingerprint)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                    TextField("Six-digit TV pairing code", text: $tvPairCode)
+                        .keyboardType(.numberPad)
+                    Button("Pair Android TV securely") {
+                        Task { await pairTV() }
+                    }.disabled(busy)
+                    Toggle("Prompt automatically for TV text fields", isOn: $tvAutoPrompt)
+                        .onChange(of: tvAutoPrompt) { enabled in
+                            AukkhorTVSettings.promptEnabled = enabled
+                        }
+                    Button("Check TV text field now") {
+                        Task { await checkTVPrompt() }
+                    }
+                    Text(tvStatus).font(.caption).foregroundStyle(.secondary)
+                    Text("Install and select Aukkhor TV Keyboard on your Google TV. The TV detects focused fields; Aukkhor on iPhone opens the typing sheet automatically while this app is active. iOS does not allow reliable background LAN wakeups like the Apple Watch keyboard prompt.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Forget Android TV pairing", role: .destructive) {
+                        Task { await AukkhorTVLink.shared.forget() }
+                        tvStatus = "TV pairing removed."
+                        lastTVSession = ""
+                    }
                 }
 
                 Section("Clipboard") {
@@ -165,12 +202,56 @@ struct AukkhorHome: View {
                 }
             }
             .navigationTitle("Aukkhor · অক্ষর")
+            .sheet(item: $tvPrompt) { prompt in
+                TVTypingSheet(prompt: prompt)
+            }
         }
         .task(id: clipboardSync && scenePhase == .active) {
             guard clipboardSync && scenePhase == .active else { return }
             while !Task.isCancelled && clipboardSync && scenePhase == .active {
                 await syncOnce()
                 try? await Task.sleep(for: .seconds(3))
+            }
+        }
+        .task(id: tvAutoPrompt && scenePhase == .active) {
+            guard tvAutoPrompt && scenePhase == .active else { return }
+            while !Task.isCancelled && tvAutoPrompt && scenePhase == .active {
+                await checkTVPrompt()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func storeTVEndpoint() {
+        AukkhorTVSettings.host = tvHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        AukkhorTVSettings.fingerprint = tvFingerprint
+    }
+
+    private func pairTV() async {
+        storeTVEndpoint()
+        busy = true
+        defer { busy = false }
+        do {
+            try await AukkhorTVLink.shared.pair(code: tvPairCode)
+            tvPairCode = ""
+            tvStatus = "TV securely paired. Open a text field on the TV."
+            lastTVSession = ""
+        } catch {
+            tvStatus = error.localizedDescription
+        }
+    }
+
+    private func checkTVPrompt() async {
+        do {
+            let prompt = try await AukkhorTVLink.shared.prompt()
+            if prompt.active && prompt.session != lastTVSession {
+                lastTVSession = prompt.session
+                tvPrompt = prompt
+                tvStatus = "Text field detected in \(prompt.label)"
+            }
+        } catch {
+            if tvStatus != error.localizedDescription {
+                tvStatus = error.localizedDescription
             }
         }
     }
@@ -291,3 +372,66 @@ private struct KeyboardThemePreview: View {
     }
 }
 
+
+private struct TVTypingSheet: View {
+    let prompt: AukkhorTVPrompt
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var hasFocus: Bool
+    @State private var input = ""
+    @State private var sending = false
+    @State private var status = "Text is only sent to your paired TV when you tap Send."
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Label("TV text field detected", systemImage: "tv")
+                    .font(.title2.weight(.bold))
+                Text(prompt.label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("Type here on your iPhone", text: $input, axis: .vertical)
+                    .lineLimit(1...5)
+                    .textInputAutocapitalization(.sentences)
+                    .submitLabel(.send)
+                    .focused($hasFocus)
+                    .onSubmit { Task { await send() } }
+                    .padding(12)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                Button {
+                    Task { await send() }
+                } label: {
+                    Label(sending ? "Sending…" : "Send to TV", systemImage: "arrow.up.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(sending || input.isEmpty)
+                Text(status).font(.footnote).foregroundStyle(.secondary)
+                Spacer()
+            }
+            .padding()
+            .navigationTitle("Aukkhor TV")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task { hasFocus = true }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func send() async {
+        guard !sending, !input.isEmpty else { return }
+        sending = true
+        defer { sending = false }
+        do {
+            try await AukkhorTVLink.shared.type(input, session: prompt.session)
+            input = ""
+            status = "Sent to the focused TV field."
+            hasFocus = true
+        } catch {
+            status = error.localizedDescription
+        }
+    }
+}
