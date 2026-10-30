@@ -47,7 +47,8 @@ jobs:
           name: Aukkhor-iOS-compat-${{ steps.source.outputs.build }}
           github-token: ${{ github.token }}
           path: dist
-      - name: Publish both verified IPAs
+      - name: Publish GitHub Release or stage verified direct downloads
+        id: distribution
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD: ${{ steps.source.outputs.build }}
@@ -57,24 +58,37 @@ jobs:
           test -s dist/Aukkhor-unsigned.ipa
           test -s dist/Aukkhor-compat-unsigned.ipa
           TAG="v0.2.0.$BUILD"
+          MODE=direct
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber
-          else
-            gh release create "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
-              --target "$SHA" --prerelease --title "Aukkhor 0.2.0.$BUILD preview" \
-              --notes "Unsigned iOS builds. Compatibility IPA removes optional shared App Group/Keychain entitlements and limits shared keyboard features; sign all embedded app extensions using the same identity. Not iPhone device-tested."
+            if gh release upload "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber; then
+              MODE=release
+            fi
+          elif gh release create "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
+            --target "$SHA" --prerelease --title "Aukkhor 0.2.0.$BUILD preview" \
+            --notes "Unsigned iPhone builds. The compatibility IPA omits shared App Group/Keychain entitlements. Sign the main app and embedded extensions with the same Apple signing identity."; then
+            MODE=release
           fi
-      - name: Refresh FlareStore JSON after release exists
+          if [ "$MODE" = direct ]; then
+            mkdir -p "downloads/$TAG"
+            cp dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa "downloads/$TAG/"
+            echo "::warning::Release creation denied; publishing verified IPAs as direct GitHub repository files."
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+      - name: Refresh FlareStore JSON with verified downloadable location
         env:
           BUILD: ${{ steps.source.outputs.build }}
+          MODE: ${{ steps.distribution.outputs.mode }}
         run: |
           set -euo pipefail
           python3 scripts/update_feed.py --version "0.2.0.$BUILD" --build-number "$BUILD" --ipa dist/Aukkhor-unsigned.ipa
+          python3 scripts/repoint_feed.py --build "$BUILD" --mode "$MODE" \
+            --ipa dist/Aukkhor-unsigned.ipa --compat dist/Aukkhor-compat-unsigned.ipa
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add repo.json source.json
+          if [ "$MODE" = direct ]; then git add "downloads/v0.2.0.$BUILD"; fi
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "catalog: recover Aukkhor 0.2.0.$BUILD"
+          git commit -m "catalog: publish verified Aukkhor 0.2.0.$BUILD ($MODE)"
           for attempt in 1 2 3; do
             git fetch origin main
             git rebase origin/main
