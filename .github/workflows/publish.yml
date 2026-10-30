@@ -45,7 +45,7 @@ jobs:
           if gh release view "${TAG}" >/dev/null 2>&1; then
             gh release upload "${TAG}" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber
           else
-            gh release create "${TAG}" dist/Aukkhor-unsigned.ipa \
+            gh release create "${TAG}" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
               --target "${TARGET_SHA}" --prerelease \
               --title "Aukkhor ${VERSION} preview" \
               --notes "Unsigned IPA previews. Use the normal IPA when your signer supports matching App Group and Keychain entitlements; use the compatibility IPA if signing rejects them (extension preference sharing and Windows pairing inside the keyboard are reduced). iPhone installation and remote typing still need device tests."
