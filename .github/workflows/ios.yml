@@ -62,6 +62,66 @@ jobs:
           mkdir -p "$RUNNER_TEMP/AukkhorCompatPackage/Payload"
           cp -R "$APP" "$RUNNER_TEMP/AukkhorCompatPackage/Payload/"
           (cd "$RUNNER_TEMP/AukkhorCompatPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-compat-unsigned.ipa" Payload)
+      - name: Generate installation isolation specs
+        run: |
+          python3 scripts/make_install_specs.py
+      - name: Build keyboard-only IPA without Share extension
+        run: |
+          set -euo pipefail
+          (cd ios && xcodegen generate --spec project-keyboard-only.yml)
+          xcodebuild -quiet -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorKeyboardOnlyDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
+          APP="$RUNNER_TEMP/AukkhorKeyboardOnlyDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          test -d "$APP/PlugIns/AukkhorKeyboard.appex"
+          test ! -d "$APP/PlugIns/AukkhorShare.appex"
+          test -s "$APP/Assets.car"
+          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
+          mkdir -p "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage/Payload/"
+          (cd "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-keyboard-only-unsigned.ipa" Payload)
+      - name: Build independent standalone installation probe
+        run: |
+          set -euo pipefail
+          (cd ios && xcodegen generate --spec project-standalone-probe.yml)
+          xcodebuild -quiet -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorProbeDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
+          APP="$RUNNER_TEMP/AukkhorProbeDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          test -d "$APP"
+          test -z "$(find "$APP/PlugIns" -maxdepth 1 -name "*.appex" -print 2>/dev/null || true)"
+          test -s "$APP/Assets.car"
+          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx dev.soum91.aukkhor.probe
+          mkdir -p "$RUNNER_TEMP/AukkhorStandaloneProbe/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/AukkhorStandaloneProbe/Payload/"
+          (cd "$RUNNER_TEMP/AukkhorStandaloneProbe" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-standalone-probe-unsigned.ipa" Payload)
+      - name: Audit package structure before publishing
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import zipfile
+          targets = {
+              'Aukkhor-unsigned.ipa': 2,
+              'Aukkhor-compat-unsigned.ipa': 2,
+              'Aukkhor-keyboard-only-unsigned.ipa': 1,
+              'Aukkhor-standalone-probe-unsigned.ipa': 0,
+          }
+          for filename, expected in targets.items():
+              with zipfile.ZipFile(filename) as ipa:
+                  names = ipa.namelist()
+                  extensions = {p.split('/')[3] for p in names if p.startswith('Payload/Aukkhor.app/PlugIns/') and p.count('/') > 3}
+                  assert len(extensions) == expected, (filename, extensions, expected)
+                  assert 'Payload/Aukkhor.app/Info.plist' in names
+                  assert 'Payload/Aukkhor.app/Aukkhor' in names
+                  print(filename, 'extensions:', ', '.join(sorted(extensions)) or 'none')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aukkhor-iOS-keyboard-only-${{ github.run_number }}
+          path: Aukkhor-keyboard-only-unsigned.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aukkhor-iOS-standalone-probe-${{ github.run_number }}
+          path: Aukkhor-standalone-probe-unsigned.ipa
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: Aukkhor-iOS-compat-${{ github.run_number }}
