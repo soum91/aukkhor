@@ -16,6 +16,16 @@
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
         {
+          "version": "0.2.0.12",
+          "buildVersion": "12",
+          "date": "2026-10-30",
+          "localizedDescription": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.12/Aukkhor-unsigned.ipa",
+          "size": 1147036,
+          "minOSVersion": "16.0"
+        },
+        {
           "version": "0.2.0.11",
           "buildVersion": "11",
           "date": "2026-10-30",
