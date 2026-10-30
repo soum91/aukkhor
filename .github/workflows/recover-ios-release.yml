@@ -1,0 +1,83 @@
+name: Recover verified Aukkhor iOS release
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/recover-ios-release.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: aukkhor-preview-publishing
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Find latest successful iOS build on main
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios.yml/runs?branch=main&status=success&per_page=10" > "$RUNNER_TEMP/runs.json"
+          python3 - "$RUNNER_TEMP/runs.json" >> "$GITHUB_OUTPUT" <<'PY'
+          import json,sys
+          runs=json.load(open(sys.argv[1]))["workflow_runs"]
+          good=[r for r in runs if r.get("conclusion")=="success" and r.get("head_branch")=="main"]
+          if not good: raise SystemExit("No completed successful main iOS run")
+          run=max(good,key=lambda r:int(r["run_number"]))
+          print("run_id="+str(run["id"]))
+          print("build="+str(run["run_number"]))
+          print("sha="+run["head_sha"])
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.source.outputs.run_id }}
+          name: Aukkhor-iOS-unsigned-${{ steps.source.outputs.build }}
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.source.outputs.run_id }}
+          name: Aukkhor-iOS-compat-${{ steps.source.outputs.build }}
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Publish both verified IPAs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ steps.source.outputs.build }}
+          SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test -s dist/Aukkhor-unsigned.ipa
+          test -s dist/Aukkhor-compat-unsigned.ipa
+          TAG="v0.2.0.$BUILD"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber
+          else
+            gh release create "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
+              --target "$SHA" --prerelease --title "Aukkhor 0.2.0.$BUILD preview" \
+              --notes "Unsigned iOS builds. Compatibility IPA removes optional shared App Group/Keychain entitlements and limits shared keyboard features; sign all embedded app extensions using the same identity. Not iPhone device-tested."
+          fi
+      - name: Refresh FlareStore JSON after release exists
+        env:
+          BUILD: ${{ steps.source.outputs.build }}
+        run: |
+          set -euo pipefail
+          python3 scripts/update_feed.py --version "0.2.0.$BUILD" --build-number "$BUILD" --ipa dist/Aukkhor-unsigned.ipa
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add repo.json source.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "catalog: recover Aukkhor 0.2.0.$BUILD"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+          done
