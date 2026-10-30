@@ -71,7 +71,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         view.addGestureRecognizer(glide)
         requestSupplementaryLexicon { [weak self] lexicon in
             DispatchQueue.main.async {
-                self?.replacements = Dictionary(lexicon?.entries.map { ($0.userInput.lowercased(), $0.documentText) } ?? [],
+                self?.replacements = Dictionary(lexicon.entries.map { ($0.userInput.lowercased(), $0.documentText) },
                                                  uniquingKeysWith: { _, newer in newer })
                 self?.refreshSuggestions()
             }
