@@ -94,9 +94,9 @@ jobs:
           MODE: ${{ steps.distribution.outputs.mode }}
         run: |
           set -euo pipefail
-          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE"
           python3 scripts/repoint_feed.py --build "$BUILD" --mode "$MODE" \
             --ipa dist/Aukkhor-unsigned.ipa --compat dist/Aukkhor-compat-unsigned.ipa
+          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add repo.json source.json
