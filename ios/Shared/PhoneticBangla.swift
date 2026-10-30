@@ -5,7 +5,7 @@ enum PhoneticBangla {
     private static let commonWords: [String: String] = [
         "ami": "আমি", "tumi": "তুমি", "bangla": "বাংলা", "bhalo": "ভালো",
         "shubho": "শুভ", "shokal": "সকাল", "dhonnobad": "ধন্যবাদ",
-        "okkhor": "অক্ষর", "aukkhor": "অক্ষর", "aukkhor": "অক্ষর", "akshor": "অক্ষর"
+        "okkhor": "অক্ষর", "akkhor": "অক্ষর", "aukkhor": "অক্ষর", "akshor": "অক্ষর"
     ]
     private static let consonants: [(String, String)] = [
         ("kksh", "ক্ষ"), ("kkh", "ক্ষ"), ("ksh", "ক্ষ"),
