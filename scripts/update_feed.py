@@ -14,6 +14,7 @@ SOURCE = "https://raw.githubusercontent.com/soum91/aukkhor/main/repo.json"
 CHANGES = (
     "Preview build: English, phonetic Bangla and direct Bangla; theme presets and "
     "custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. "
+    "Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. "
     "Unsigned IPA: sign with your own valid iOS provisioning profile."
 )
 
