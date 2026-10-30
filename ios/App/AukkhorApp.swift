@@ -40,6 +40,10 @@ struct AukkhorHome: View {
     @State private var tvAutoPrompt = AukkhorTVSettings.promptEnabled
     @State private var lastTVSession = ""
     @State private var tvPrompt: AukkhorTVPrompt?
+    @State private var windowsPrompt: AukkhorTVPrompt?
+    @State private var lastWindowsSession = ""
+    @State private var windowsAutoPrompt = UserDefaults.standard.bool(forKey: "windowsRemotePrompt")
+    @State private var windowsRemoteStatus = ""
 
     var body: some View {
         NavigationStack {
@@ -55,6 +59,18 @@ struct AukkhorHome: View {
                     Button(busy ? "Pairing…" : "Pair securely") { Task { await pair() } }
                         .disabled(busy)
                     Text(status).font(.footnote).foregroundStyle(.secondary)
+                    Toggle("Prompt automatically for focused Windows text fields", isOn: $windowsAutoPrompt)
+                        .onChange(of: windowsAutoPrompt) { enabled in
+                            UserDefaults.standard.set(enabled, forKey: "windowsRemotePrompt")
+                        }
+                    Button("Check focused Windows field now") {
+                        Task { await checkWindowsPrompt() }
+                    }
+                    if !windowsRemoteStatus.isEmpty {
+                        Text(windowsRemoteStatus).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text("Enable remote typing in the Windows Aukkhor companion. Currently native Windows Edit/RichEdit fields can auto-prompt while Aukkhor is open on iPhone. Browser fields do not auto-prompt.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
 
                 Section("Android TV keyboard and iPhone typing") {
@@ -203,7 +219,10 @@ struct AukkhorHome: View {
             }
             .navigationTitle("Aukkhor · অক্ষর")
             .sheet(item: $tvPrompt) { prompt in
-                TVTypingSheet(prompt: prompt)
+                TVTypingSheet(prompt: prompt, destination: .tv)
+            }
+            .sheet(item: $windowsPrompt) { prompt in
+                TVTypingSheet(prompt: prompt, destination: .windows)
             }
         }
         .task(id: clipboardSync && scenePhase == .active) {
@@ -213,11 +232,33 @@ struct AukkhorHome: View {
                 try? await Task.sleep(for: .seconds(3))
             }
         }
+        .task(id: windowsAutoPrompt && scenePhase == .active) {
+            guard windowsAutoPrompt && scenePhase == .active else { return }
+            while !Task.isCancelled && windowsAutoPrompt && scenePhase == .active {
+                await checkWindowsPrompt()
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
         .task(id: tvAutoPrompt && scenePhase == .active) {
             guard tvAutoPrompt && scenePhase == .active else { return }
             while !Task.isCancelled && tvAutoPrompt && scenePhase == .active {
                 await checkTVPrompt()
                 try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func checkWindowsPrompt() async {
+        do {
+            let prompt = try await AukkhorLink.shared.windowsPrompt()
+            if prompt.active && prompt.session != lastWindowsSession {
+                lastWindowsSession = prompt.session
+                windowsPrompt = prompt
+                windowsRemoteStatus = "Windows text field detected."
+            }
+        } catch {
+            if windowsRemoteStatus != error.localizedDescription {
+                windowsRemoteStatus = error.localizedDescription
             }
         }
     }
@@ -373,8 +414,11 @@ private struct KeyboardThemePreview: View {
 }
 
 
+private enum RemoteTypingDestination { case tv, windows }
+
 private struct TVTypingSheet: View {
     let prompt: AukkhorTVPrompt
+    let destination: RemoteTypingDestination
     @Environment(\.dismiss) private var dismiss
     @FocusState private var hasFocus: Bool
     @State private var input = ""
@@ -384,12 +428,13 @@ private struct TVTypingSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 18) {
-                Label("TV text field detected", systemImage: "tv")
+                Label(destination == .tv ? "TV text field detected" : "Windows text field detected",
+                      systemImage: destination == .tv ? "tv" : "desktopcomputer")
                     .font(.title2.weight(.bold))
                 Text(prompt.label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                TextField("Type here on your iPhone", text: $input, axis: .vertical)
+                TextField("Type on your iPhone", text: $input, axis: .vertical)
                     .lineLimit(1...5)
                     .textInputAutocapitalization(.sentences)
                     .submitLabel(.send)
@@ -400,7 +445,8 @@ private struct TVTypingSheet: View {
                 Button {
                     Task { await send() }
                 } label: {
-                    Label(sending ? "Sending…" : "Send to TV", systemImage: "arrow.up.circle.fill")
+                    Label(sending ? "Sending…" : (destination == .tv ? "Send to TV" : "Send to Windows"),
+                          systemImage: "arrow.up.circle.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -409,7 +455,7 @@ private struct TVTypingSheet: View {
                 Spacer()
             }
             .padding()
-            .navigationTitle("Aukkhor TV")
+            .navigationTitle(destination == .tv ? "Aukkhor TV" : "Aukkhor Windows")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -426,9 +472,13 @@ private struct TVTypingSheet: View {
         sending = true
         defer { sending = false }
         do {
-            try await AukkhorTVLink.shared.type(input, session: prompt.session)
+            if destination == .tv {
+                try await AukkhorTVLink.shared.type(input, session: prompt.session)
+            } else {
+                try await AukkhorLink.shared.typeOnWindows(input, focusedSession: prompt.session)
+            }
             input = ""
-            status = "Sent to the focused TV field."
+            status = "Sent to the focused \(destination == .tv ? "TV" : "Windows") field."
             hasFocus = true
         } catch {
             status = error.localizedDescription

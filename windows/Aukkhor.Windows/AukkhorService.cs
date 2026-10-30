@@ -20,6 +20,9 @@ internal interface IAukkhorUi
     bool AllowClipboardWrite { get; }
     void ReceivedCode(string code);
     void Report(string text);
+    bool RemoteTypingEnabled { get; }
+    string? FocusedFieldTag { get; }
+    Task<bool> TypeRemoteTextAsync(string text, string expectedFocus);
 }
 
 internal sealed class AukkhorService(IAukkhorUi ui) : IAsyncDisposable
@@ -38,6 +41,9 @@ internal sealed class AukkhorService(IAukkhorUi ui) : IAsyncDisposable
     private int challengeFailures;
     private string? lastCode;
     private DateTimeOffset codeExpiry;
+    private string? lastFocus;
+    private string remoteSession = "";
+    private string remoteLabel = "Windows text field";
 
     private sealed record TrustData(string Id, string Secret);
     private sealed record ChallengeData(string Id, string Nonce);
@@ -91,6 +97,8 @@ internal sealed class AukkhorService(IAukkhorUi ui) : IAsyncDisposable
         server.MapGet("/clipboard", GetClipboardAsync);
         server.MapPost("/clipboard", PostClipboardAsync);
         server.MapPost("/code", PostCodeAsync);
+        server.MapGet("/prompt", GetPromptAsync);
+        server.MapPost("/type", PostTypeAsync);
         await server.StartAsync();
         app = server;
         ui.Report($"Aukkhor listening on https://{address}:{Port}");
@@ -210,6 +218,68 @@ internal sealed class AukkhorService(IAukkhorUi ui) : IAsyncDisposable
         }
         ui.ReceivedCode(code);
         await ctx.Response.WriteAsync("OK");
+    }
+
+    /// <summary>Refresh focus state from the local, user-visible Windows UI.</summary>
+    public void ObserveTextFocus(string? focusTag)
+    {
+        lock (gate)
+        {
+            if (!ui.RemoteTypingEnabled) focusTag = null;
+            if (focusTag != lastFocus)
+            {
+                lastFocus = focusTag;
+                remoteSession = focusTag is null ? "" : Convert.ToHexString(RandomNumberGenerator.GetBytes(12));
+                remoteLabel = "Windows text field";
+            }
+        }
+    }
+
+    private async Task GetPromptAsync(HttpContext ctx)
+    {
+        if (!Authorized(ctx)) { ctx.Response.StatusCode = 403; return; }
+        bool active;
+        string session;
+        string label;
+        lock (gate)
+        {
+            active = ui.RemoteTypingEnabled && lastFocus is not null &&
+                     ui.FocusedFieldTag == lastFocus && remoteSession.Length == 24;
+            session = active ? remoteSession : "";
+            label = active ? remoteLabel : "";
+        }
+        ctx.Response.Headers.CacheControl = "no-store";
+        await ctx.Response.WriteAsJsonAsync(new { active, session, label });
+    }
+
+    private async Task PostTypeAsync(HttpContext ctx)
+    {
+        if (!Authorized(ctx) || !ui.RemoteTypingEnabled) { ctx.Response.StatusCode = 403; return; }
+        string expectedFocus;
+        lock (gate)
+        {
+            if (lastFocus is null || remoteSession.Length != 24 ||
+                ctx.Request.Headers["X-Aukkhor-Session"].ToString() != remoteSession)
+            {
+                ctx.Response.StatusCode = 409; return;
+            }
+            expectedFocus = lastFocus;
+        }
+        var data = await ReadBounded(ctx, 8192);
+        if (data is null) { ctx.Response.StatusCode = 413; return; }
+        try
+        {
+            var text = new UTF8Encoding(false, true).GetString(data);
+            if (string.IsNullOrWhiteSpace(text) || text.Length > 2048 ||
+                text.Contains('\0'))
+            {
+                ctx.Response.StatusCode = 400; return;
+            }
+            var accepted = await ui.TypeRemoteTextAsync(text, expectedFocus);
+            if (!accepted) { ctx.Response.StatusCode = 409; return; }
+            await ctx.Response.WriteAsync("OK");
+        }
+        catch (DecoderFallbackException) { ctx.Response.StatusCode = 400; }
     }
 
     public string? TakeCode(bool consume = false)

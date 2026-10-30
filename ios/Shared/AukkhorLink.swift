@@ -207,6 +207,23 @@ actor AukkhorLink {
         return result
     }
 
+    func windowsPrompt() async throws -> AukkhorTVPrompt {
+        let token = try await sessionToken()
+        let data = try await exchange(request("prompt", token: token))
+        return try JSONDecoder().decode(AukkhorTVPrompt.self, from: data)
+    }
+
+    func typeOnWindows(_ text: String, focusedSession: String) async throws {
+        guard !text.isEmpty && text.utf8.count <= 8192 && text.count <= 2048,
+              focusedSession.range(of: "^[0-9A-F]{24}$", options: .regularExpression) != nil else {
+            throw AukkhorError.badResponse("Invalid text or focused Windows field.")
+        }
+        let token = try await sessionToken()
+        var req = try request("type",method:"POST",token:token,body:Data(text.utf8))
+        req.setValue(focusedSession, forHTTPHeaderField: "X-Aukkhor-Session")
+        _ = try await exchange(req)
+    }
+
     func sendCode(from text: String) async throws -> String {
         guard let code = CodeExtractor.extract(text) else { throw AukkhorError.noCode }
         let token = try await sessionToken()

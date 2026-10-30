@@ -1,5 +1,6 @@
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -18,6 +19,9 @@ internal sealed class MainForm : Form, IAukkhorUi
     private readonly CheckBox share = new() { Text = "Allow iPhone to read Windows clipboard", AutoSize = true };
     private readonly CheckBox receive = new() { Text = "Allow iPhone to update Windows clipboard", AutoSize = true };
     private readonly CheckBox autoStart = new() { Text = "Start with Windows login", AutoSize = true };
+    private readonly CheckBox remoteTyping = new() { Text = "Allow paired iPhone to type in focused Windows text fields", AutoSize = true };
+    private bool canRemoteType;
+    private IntPtr ownWindow;
     private readonly Label lastCode = new() { AutoSize = true, Text = "No active code" };
     private readonly Label status = new() { AutoSize = false, Height = 50, Width = 520, Text = "Choose a trusted private Wi-Fi or Ethernet network." };
     private readonly Button start = new() { Text = "Start Windows companion", AutoSize = true };
@@ -30,7 +34,7 @@ internal sealed class MainForm : Form, IAukkhorUi
     private string pendingLog = "";
     private bool allowClose;
 
-    private sealed record Settings(string Host, bool AllowRead, bool AllowWrite);
+    private sealed record Settings(string Host, bool AllowRead, bool AllowWrite, bool AllowRemoteType);
     internal sealed record AddressChoice(IPAddress Address, string Adapter)
     {
         public override string ToString() => $"{Address}  ·  {Adapter}";
@@ -67,6 +71,14 @@ internal sealed class MainForm : Form, IAukkhorUi
         share.CheckedChanged += (_, _) => { canShare = share.Checked; SaveSettings(); };
         receive.CheckedChanged += (_, _) => { canReceive = receive.Checked; SaveSettings(); };
         panel.Controls.Add(autoStart);
+        panel.Controls.Add(remoteTyping);
+        remoteTyping.CheckedChanged += (_, _) => {
+            canRemoteType = remoteTyping.Checked;
+            service.ObserveTextFocus(FocusedFieldTag);
+            SaveSettings();
+        };
+        panel.Controls.Add(Header("Remote typing: opens an iPhone prompt for native Windows Edit/RichEdit controls when Aukkhor is foregrounded on your iPhone.", 9));
+        panel.Controls.Add(Header("Browser web fields and protected password inputs are not auto-detected.", 9));
         autoStart.CheckedChanged += (_, _) => SetAutoStart(autoStart.Checked);
         panel.Controls.Add(Header("Latest code (expires after 2 minutes)", 10));
         panel.Controls.Add(lastCode);
@@ -90,6 +102,7 @@ internal sealed class MainForm : Form, IAukkhorUi
         FormClosed += async (_, _) => { tray.Visible = false; await service.DisposeAsync(); };
         timer.Tick += (_, _) => {
             if (service.Running) pairing.Text = service.PairCode;
+            service.ObserveTextFocus(FocusedFieldTag);
             lastCode.Text = service.TakeCode() is string code ? $"Code ending in {code[^2..]} available" : "No active code";
         };
         timer.Start();
@@ -97,6 +110,7 @@ internal sealed class MainForm : Form, IAukkhorUi
         RefreshAdapters();
         RestoreSettings();
         Shown += async (_, _) => {
+            ownWindow = Handle;
             RegisterHotKey(Handle, HotkeyId, ModAlt | ModControl, (uint)Keys.B);
             if (!string.IsNullOrEmpty(previousHost)) await StartReceiver();
         };
@@ -165,6 +179,65 @@ internal sealed class MainForm : Form, IAukkhorUi
         status.Text = "Code copied to Windows clipboard";
     }
 
+    public bool RemoteTypingEnabled => canRemoteType;
+    public string? FocusedFieldTag {
+        get {
+            if (!canRemoteType) return null;
+            var foreground = GetForegroundWindow();
+            if (foreground == IntPtr.Zero || foreground == ownWindow) return null;
+            var info = new GUIThreadInfo { cbSize = (uint)Marshal.SizeOf<GUIThreadInfo>() };
+            if (!GetGUIThreadInfo(0, ref info) || info.hwndFocus == IntPtr.Zero) return null;
+            var className = new StringBuilder(128);
+            if (GetClassName(info.hwndFocus, className, className.Capacity) == 0) return null;
+            var name = className.ToString();
+            if (name.IndexOf("Edit", StringComparison.OrdinalIgnoreCase) < 0) return null;
+            // ES_PASSWORD = 0x20. Never offer prompt for protected Win32 Edit controls.
+            if ((GetWindowLong(info.hwndFocus, -16) & 0x20) != 0) return null;
+            return foreground.ToInt64().ToString("X") + ":" + info.hwndFocus.ToInt64().ToString("X");
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GUIThreadInfo {
+        public uint cbSize, flags;
+        public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret;
+        public Rect rcCaret;
+    }
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint idThread, ref GUIThreadInfo info);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr handle, StringBuilder buffer, int maxCount);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongW")]
+    private static extern int GetWindowLong(IntPtr handle, int index);
+
+    // SendInput with Unicode scan events preserves Bangla characters. No clipboard overwrite.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput {
+        public ushort wVk, wScan;
+        public uint dwFlags, time;
+        public UIntPtr dwExtraInfo;
+    }
+    [StructLayout(LayoutKind.Explicit, Size = 32)]
+    private struct InputUnion { [FieldOffset(0)] public KeyboardInput keyboard; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput { public uint type; public InputUnion value; }
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, NativeInput[] inputs, int size);
+
+    private static bool TypeUnicode(string text) {
+        var keys = new List<NativeInput>(text.Length * 2);
+        foreach (char letter in text) {
+            keys.Add(new NativeInput { type = 1, value = new InputUnion { keyboard = new KeyboardInput { wScan = letter, dwFlags = 0x4 } } });
+            keys.Add(new NativeInput { type = 1, value = new InputUnion { keyboard = new KeyboardInput { wScan = letter, dwFlags = 0x4 | 0x2 } } });
+        }
+        return SendInput((uint)keys.Count, keys.ToArray(), Marshal.SizeOf<NativeInput>()) == keys.Count;
+    }
+
+    public async Task<bool> TypeRemoteTextAsync(string text, string expectedFocus) =>
+        await OnUi(() => FocusedFieldTag == expectedFocus && TypeUnicode(text));
+
     public bool AllowClipboardRead => canShare;
     public bool AllowClipboardWrite => canReceive;
 
@@ -198,7 +271,12 @@ internal sealed class MainForm : Form, IAukkhorUi
         try
         {
             var cfg = JsonSerializer.Deserialize<Settings>(File.ReadAllText(settingsFile));
-            if (cfg is not null) { previousHost = cfg.Host; share.Checked = cfg.AllowRead; receive.Checked = cfg.AllowWrite; }
+            if (cfg is not null) {
+                previousHost = cfg.Host;
+                share.Checked = cfg.AllowRead;
+                receive.Checked = cfg.AllowWrite;
+                remoteTyping.Checked = cfg.AllowRemoteType;
+            }
         }
         catch (IOException) { }
         catch (JsonException) { }
@@ -211,7 +289,7 @@ internal sealed class MainForm : Form, IAukkhorUi
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(settingsFile)!);
-            File.WriteAllText(settingsFile, JsonSerializer.Serialize(new Settings(previousHost, canShare, canReceive)));
+            File.WriteAllText(settingsFile, JsonSerializer.Serialize(new Settings(previousHost, canShare, canReceive, canRemoteType)));
         }
         catch (IOException) { }
     }
