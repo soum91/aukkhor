@@ -47,48 +47,59 @@ enum AukkhorKeychain {
     private static let account = "windows-trust-v1"
     private static let service = "dev.soum91.aukkhor"
 
-    // The same access group is listed in each target's entitlements.
+    // Prefer shared group in the full build. Compatibility signers may not provide
+    // its entitlement; the containing app then uses the default private Keychain.
     private static var group: String? {
-        Bundle.main.object(forInfoDictionaryKey: "AukkhorKeychainGroup") as? String
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "AukkhorKeychainGroup") as? String,
+              !value.isEmpty, !value.contains("$(") else { return nil }
+        return value
+    }
+
+    private static func query(useShared: Bool) -> [String: Any] {
+        var item: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account
+        ]
+        if useShared, let group { item[kSecAttrAccessGroup as String] = group }
+        return item
     }
 
     static func load() -> AukkhorTrust? {
-        guard let group else { return nil }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: group,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data else { return nil }
-        return try? JSONDecoder().decode(AukkhorTrust.self, from: data)
+        for shared in [true,false] {
+            if shared && group == nil { continue }
+            var request = query(useShared: shared)
+            request[kSecReturnData as String] = true
+            request[kSecMatchLimit as String] = kSecMatchLimitOne
+            var result: CFTypeRef?
+            if SecItemCopyMatching(request as CFDictionary, &result) == errSecSuccess,
+               let data = result as? Data,
+               let trust = try? JSONDecoder().decode(AukkhorTrust.self, from: data) {
+                return trust
+            }
+        }
+        return nil
     }
 
     @discardableResult static func save(_ trust: AukkhorTrust) -> Bool {
-        guard let group, let data = try? JSONEncoder().encode(trust) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessGroup as String: group
-        ]
-        var item = query
-        item[kSecValueData as String] = data
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        SecItemDelete(query as CFDictionary)
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        guard let data = try? JSONEncoder().encode(trust) else { return false }
+        for shared in [true,false] {
+            if shared && group == nil { continue }
+            let criteria = query(useShared: shared)
+            var item = criteria
+            item[kSecValueData as String] = data
+            item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            SecItemDelete(criteria as CFDictionary)
+            let result = SecItemAdd(item as CFDictionary, nil)
+            if result == errSecSuccess { return true }
+            if result != errSecMissingEntitlement && result != errSecParam { break }
+        }
+        return false
     }
 
     static func remove() {
-        guard let group else { return }
-        SecItemDelete([kSecClass as String: kSecClassGenericPassword,
-                       kSecAttrService as String: service,
-                       kSecAttrAccount as String: account,
-                       kSecAttrAccessGroup as String: group] as CFDictionary)
+        SecItemDelete(query(useShared: true) as CFDictionary)
+        SecItemDelete(query(useShared: false) as CFDictionary)
     }
 }
 

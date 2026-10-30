@@ -18,6 +18,10 @@ jobs:
         run: |
           sips -z 1024 1024 ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png >/dev/null
           sips -g pixelWidth -g pixelHeight ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png
+      - name: Show Xcode and iPhoneOS toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
       - name: Generate project
         working-directory: ios
         run: xcodegen generate
@@ -33,6 +37,36 @@ jobs:
           mkdir -p "$RUNNER_TEMP/AukkhorPackage/Payload"
           cp -R "$APP" "$RUNNER_TEMP/AukkhorPackage/Payload/"
           (cd "$RUNNER_TEMP/AukkhorPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-unsigned.ipa" Payload)
+      - name: Inspect arm64 architecture and bundle metadata
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/AukkhorDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
+          xcrun lipo -archs "$APP/PlugIns/AukkhorKeyboard.appex/AukkhorKeyboard" | grep -w arm64
+          xcrun lipo -archs "$APP/PlugIns/AukkhorShare.appex/AukkhorShare" | grep -w arm64
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP/Info.plist" | grep -Fx iPhoneOS
+      - name: Generate compatibility project without optional entitlements
+        run: |
+          python3 scripts/make_compat_spec.py
+          (cd ios && xcodegen generate --spec project-compat.yml)
+      - name: Build compatibility IPA with keyboard and Share extension
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorCompatDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
+          APP="$RUNNER_TEMP/AukkhorCompatDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          test -d "$APP/PlugIns/AukkhorKeyboard.appex"
+          test -d "$APP/PlugIns/AukkhorShare.appex"
+          test -s "$APP/Assets.car"
+          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
+          mkdir -p "$RUNNER_TEMP/AukkhorCompatPackage/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/AukkhorCompatPackage/Payload/"
+          (cd "$RUNNER_TEMP/AukkhorCompatPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-compat-unsigned.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aukkhor-iOS-compat-${{ github.run_number }}
+          path: Aukkhor-compat-unsigned.ipa
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: Aukkhor-iOS-unsigned-${{ github.run_number }}

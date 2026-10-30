@@ -25,6 +25,13 @@ jobs:
           name: Aukkhor-iOS-unsigned-${{ github.event.workflow_run.run_number }}
           github-token: ${{ github.token }}
           path: dist
+      - name: Download compatibility IPA from same verified build
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ github.event.workflow_run.id }}
+          name: Aukkhor-iOS-compat-${{ github.event.workflow_run.run_number }}
+          github-token: ${{ github.token }}
+          path: dist
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -33,14 +40,15 @@ jobs:
         run: |
           set -euo pipefail
           test -s dist/Aukkhor-unsigned.ipa
+          test -s dist/Aukkhor-compat-unsigned.ipa
           TAG="v${VERSION}"
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/Aukkhor-unsigned.ipa --clobber
+            gh release upload "${TAG}" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber
           else
             gh release create "${TAG}" dist/Aukkhor-unsigned.ipa \
               --target "${TARGET_SHA}" --prerelease \
               --title "Aukkhor ${VERSION} preview" \
-              --notes "Unsigned iOS IPA preview. Sign before installing. Windows companion is available from its successful Actions run. Not device-tested yet."
+              --notes "Unsigned IPA previews. Use the normal IPA when your signer supports matching App Group and Keychain entitlements; use the compatibility IPA if signing rejects them (extension preference sharing and Windows pairing inside the keyboard are reduced). iPhone installation and remote typing still need device tests."
           fi
       - name: Update FlareStore source aliases
         env:
