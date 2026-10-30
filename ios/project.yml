@@ -23,9 +23,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor
         INFOPLIST_KEY_CFBundleDisplayName: Aukkhor
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
+      path: App/Info.plist
       properties:
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
@@ -50,10 +51,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor.keyboard
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_KEY_CFBundleDisplayName: Aukkhor Keyboard
         APPLICATION_EXTENSION_API_ONLY: YES
     info:
+      path: Keyboard/Info.plist
       properties:
         NSLocalNetworkUsageDescription: Aukkhor transfers clipboard text to your paired Windows PC on the local network.
         NSExtension:
@@ -76,10 +78,11 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor.share
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_KEY_CFBundleDisplayName: Send code to Windows
         APPLICATION_EXTENSION_API_ONLY: YES
     info:
+      path: Share/Info.plist
       properties:
         NSLocalNetworkUsageDescription: Aukkhor sends codes you choose to share to your paired Windows PC.
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
