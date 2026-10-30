@@ -29,14 +29,12 @@ struct ForwardAukkhorCodeIntent: AppIntent {
 
 struct AukkhorShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
-        [
-            AppShortcut(intent: SendAukkhorClipboardIntent(),
-                        phrases: ["Send clipboard with \(.applicationName)"],
-                        shortTitle: "Send clipboard", systemImageName: "doc.on.clipboard"),
-            AppShortcut(intent: ForwardAukkhorCodeIntent(),
-                        phrases: ["Forward \(\.$messageText) with \(.applicationName)"],
-                        shortTitle: "Forward code", systemImageName: "number.square")
-        ]
+        AppShortcut(intent: SendAukkhorClipboardIntent(),
+                    phrases: ["Send clipboard with \(.applicationName)"],
+                    shortTitle: "Send clipboard", systemImageName: "doc.on.clipboard")
+        AppShortcut(intent: ForwardAukkhorCodeIntent(),
+                    phrases: ["Forward \(\.$messageText) with \(.applicationName)"],
+                    shortTitle: "Forward code", systemImageName: "number.square")
     }
 }
 
