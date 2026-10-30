@@ -67,3 +67,58 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 - Apple keyboard and QuickPath: https://support.apple.com/guide/iphone/enter-text-with-the-onscreen-keyboard-iph3c50f96e/ios
 - Apple custom keyboard limitations: https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/CustomKeyboard.html
 
+
+## Android TV keyboard and iPhone remote typing (0.3 preview)
+
+The Aukkhor Android TV source is in `android-tv/` and builds with Gradle on GitHub Actions.
+The **signed** APK is released by `soum91/embertv` using its existing permanent Android
+signing identity, not a temporary CI debug key. EmberTV's `repo.json` includes the app.
+
+1. Install **Aukkhor TV Keyboard** through EmberTV or from the signed APK in EmberTV GitHub Releases.
+2. Open the Aukkhor TV app. Start its foreground receiver and enable/select Aukkhor from the TV's
+   Input Method settings. Once selected, it supplies a D-pad-friendly keyboard.
+3. On the TV screen, read the private LAN IPv4, six-digit pairing code and SHA-256 certificate
+   fingerprint. On the iPhone, open Aukkhor → **Android TV keyboard and iPhone typing**,
+   enter those values and pair.
+4. Enable **Prompt automatically for TV text fields** on iPhone. **Keep the Aukkhor app foregrounded**.
+   When the selected Aukkhor TV IME sees a normal focused editor, the iPhone app opens a native
+   text-entry sheet automatically and brings up the iPhone's keyboard. Tap **Send to TV** to
+   commit the entered text to the currently focused TV field.
+5. The native Android TV keyboard includes English, first-pass phonetic Bangla and direct Bangla,
+   D-pad controls, Backspace, Space, symbols and Done.
+
+**Limits:** iOS will suspend ordinary LAN polling while Aukkhor is backgrounded; this is not an
+unattended Apple-Watch-style notification while the app is closed. For reliable background wake
+a separate push-notification service and an Apple push-capable signing identity would be required.
+Password fields reject remote input. Only apps using standard Android input-method APIs are
+supported. A VPN or TV/router AP isolation can prevent communication. 2.4 GHz and 5 GHz devices
+can communicate when both are bridged onto the same non-isolated LAN.
+
+## Windows remote text entry
+
+In the Windows companion, enable **Allow paired iPhone to type in focused Windows text fields**.
+In Aukkhor on iPhone, enable **Prompt automatically for focused Windows text fields**. While
+Aukkhor is foregrounded, focused native Windows Edit/RichEdit controls can trigger an iPhone
+typing sheet. Text is inserted on explicit Send using Unicode input events. Browser web inputs,
+password fields and elevated windows are not automatically supported or bypassed.
+
+## iOS installation: standard and compatibility builds
+
+The normal IPA preserves the keyboard's shared App Group and Keychain requirements. If your
+signer rejects those entitlements, use `Aukkhor-compat-unsigned.ipa` instead. It includes the
+keyboard and Share extension but strips optional App Group and custom Keychain-sharing
+entitlements. **Limitations of the compat variant:** shared settings, photo themes, Windows
+pairing across the host app and keyboard extension may not function; TV pairing and remote
+typing work in the main app using its private Keychain.
+
+Both IPAs are **unsigned** and need re-signing. Re-sign the **host app and both embedded .appex
+extensions** with compatible bundle IDs, valid provisioning profiles and a common signing
+identity; a signer that signs only the host does not produce an installable keyboard app.
+The CI audit confirms arm64 and an iPhoneOS minimum deployment target of iOS 16.0. The current
+runner used Xcode 26.6 and iPhoneOS SDK 26.5, which by itself does not establish a device
+incompatibility with iOS 27.
+
+For exact failure diagnosis obtain the full installation error code / log from FlareStore or
+EmberSign. Typical causes include missing profiles, invalid signing entitlements, app identifier
+mismatches, and incorrectly signed embedded extensions. Do not assume an Xcode or hardware
+problem from a generic 'Could not install' message.
