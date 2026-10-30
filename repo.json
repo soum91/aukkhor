@@ -5,5 +5,27 @@
   "description": "Unsigned Aukkhor IPA builds for signing in FlareStore or EmberSign. Includes a Windows clipboard and one-time-code companion.",
   "sourceURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/repo.json",
   "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
-  "apps": []
+  "apps": [
+    {
+      "name": "Aukkhor",
+      "bundleIdentifier": "dev.soum91.aukkhor",
+      "developerName": "soum91",
+      "subtitle": "Keyboard, themes, clipboard and Windows companion",
+      "localizedDescription": "English, phonetic Bangla and direct Bangla keyboard with on-device themes, dictionary and speech tools, plus opt-in paired Windows clipboard/code handoff.",
+      "category": "utilities",
+      "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
+      "versions": [
+        {
+          "version": "0.2.0.7",
+          "buildVersion": "7",
+          "date": "2026-10-30",
+          "localizedDescription": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.7/Aukkhor-unsigned.ipa",
+          "size": 343119,
+          "minOSVersion": "16.0"
+        }
+      ]
+    }
+  ]
 }
