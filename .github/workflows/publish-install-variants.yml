@@ -1,0 +1,114 @@
+name: Publish all Aukkhor diagnostic IPAs to FlareStore
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'scripts/publish_install_variants.py'
+      - '.github/workflows/publish-install-variants.yml'
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: aukkhor-diagnostic-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Find newest successfully audited iOS build
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios.yml/runs?branch=main&status=success&per_page=15" > "$RUNNER_TEMP/runs.json"
+          python3 - "$RUNNER_TEMP/runs.json" >> "$GITHUB_OUTPUT" <<'PY'
+          import json,sys
+          runs=json.load(open(sys.argv[1]))['workflow_runs']
+          good=[r for r in runs if r.get('conclusion')=='success' and r.get('head_branch')=='main']
+          if not good: raise SystemExit('No audited successful iOS build')
+          run=max(good,key=lambda r:int(r['run_number']))
+          print('id='+str(run['id']))
+          print('number='+str(run['run_number']))
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.build.outputs.id }}
+          name: Aukkhor-iOS-unsigned-${{ steps.build.outputs.number }}
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.build.outputs.id }}
+          name: Aukkhor-iOS-compat-${{ steps.build.outputs.number }}
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.build.outputs.id }}
+          name: Aukkhor-iOS-keyboard-only-${{ steps.build.outputs.number }}
+          github-token: ${{ github.token }}
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.build.outputs.id }}
+          name: Aukkhor-iOS-standalone-probe-${{ steps.build.outputs.number }}
+          github-token: ${{ github.token }}
+          path: dist
+      - name: Validate all four IPA structures
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+        run: |
+          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode release
+      - name: Upload both diagnostic variants to existing release or stage direct files
+        id: distribution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD: ${{ steps.build.outputs.number }}
+        run: |
+          set -euo pipefail
+          TAG="v0.2.0.$BUILD"
+          MODE=direct
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if gh release upload "$TAG" \
+              dist/Aukkhor-keyboard-only-unsigned.ipa \
+              dist/Aukkhor-standalone-probe-unsigned.ipa \
+              dist/Aukkhor-compat-unsigned.ipa \
+              dist/Aukkhor-unsigned.ipa --clobber; then
+              MODE=release
+            fi
+          fi
+          if [ "$MODE" = direct ]; then
+            mkdir -p "downloads/$TAG"
+            cp dist/*.ipa "downloads/$TAG/"
+            echo "::warning::GitHub release assets unavailable; publishing verified IPAs as repository files."
+          fi
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+      - name: Repoint and publish JSON feed only after assets exist
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+          MODE: ${{ steps.distribution.outputs.mode }}
+        run: |
+          set -euo pipefail
+          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE"
+          python3 scripts/repoint_feed.py --build "$BUILD" --mode "$MODE" \
+            --ipa dist/Aukkhor-unsigned.ipa --compat dist/Aukkhor-compat-unsigned.ipa
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add repo.json source.json
+          if [ "$MODE" = direct ]; then
+            git add -f "downloads/v0.2.0.$BUILD/"*.ipa
+            test "$(git ls-files "downloads/v0.2.0.$BUILD/"*.ipa | wc -l)" -eq 4
+          fi
+          git diff --cached --quiet && exit 0
+          git commit -m "catalog: expose four Aukkhor installation variants 0.2.0.$BUILD"
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git rebase origin/main
+            if git push origin HEAD:main; then exit 0; fi
+            test "$attempt" -ne 3 || exit 1
+          done
