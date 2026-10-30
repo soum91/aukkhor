@@ -16,6 +16,17 @@
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
         {
+          "version": "0.2.0.11",
+          "buildVersion": "11",
+          "date": "2026-10-30",
+          "localizedDescription": "iPhone keyboard with English, phonetic Bangla and direct Bangla, themes, TV focused-field typing, and opt-in Windows remote typing. Compatibility IPA is available with reduced cross-extension entitlements. Unsigned previews: sign all app extensions and the host app correctly.",
+          "changelog": "iPhone keyboard with English, phonetic Bangla and direct Bangla, themes, TV focused-field typing, and opt-in Windows remote typing. Compatibility IPA is available with reduced cross-extension entitlements. Unsigned previews: sign all app extensions and the host app correctly.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.11/Aukkhor-unsigned.ipa",
+          "size": 1147036,
+          "minOSVersion": "16.0",
+          "compatibilityURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.11/Aukkhor-compat-unsigned.ipa"
+        },
+        {
           "version": "0.2.0.10",
           "buildVersion": "10",
           "date": "2026-10-30",
