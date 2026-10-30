@@ -1,0 +1,101 @@
+name: Aukkhor
+options:
+  bundleIdPrefix: dev.soum91.aukkhor
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.9'
+    TARGETED_DEVICE_FAMILY: '1,2'
+    CODE_SIGN_STYLE: Manual
+    MARKETING_VERSION: 0.2.0
+    CURRENT_PROJECT_VERSION: '1'
+    ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
+targets:
+  Aukkhor:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+      - path: Shared
+      - path: Assets.xcassets
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor
+        INFOPLIST_KEY_CFBundleDisplayName: Aukkhor
+        GENERATE_INFOPLIST_FILE: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      properties:
+        UILaunchScreen: {}
+        NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
+        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    entitlements:
+      path: App/Aukkhor.entitlements
+    dependencies:
+      - target: AukkhorKeyboard
+        embed: true
+      - target: AukkhorShare
+        embed: true
+  AukkhorKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Keyboard
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor.keyboard
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Aukkhor Keyboard
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      properties:
+        NSLocalNetworkUsageDescription: Aukkhor transfers clipboard text to your paired Windows PC on the local network.
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          NSExtensionAttributes:
+            IsASCIICapable: true
+            PrefersRightToLeft: false
+            PrimaryLanguage: en
+            RequestsOpenAccess: true
+        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
+    entitlements:
+      path: Keyboard/AukkhorKeyboard.entitlements
+  AukkhorShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Share
+      - path: Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor.share
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Send code to Windows
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      properties:
+        NSLocalNetworkUsageDescription: Aukkhor sends codes you choose to share to your paired Windows PC.
+        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+    entitlements:
+      path: Share/AukkhorShare.entitlements
+schemes:
+  Aukkhor:
+    build:
+      targets:
+        Aukkhor: all
+    archive:
+      config: Release
+

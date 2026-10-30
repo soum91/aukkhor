@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+DerivedData/
+ios/Aukkhor.xcodeproj/
+windows/**/bin/
+windows/**/obj/
+*.ipa
+*.pfx
+*.p12
+*.mobileprovision
+

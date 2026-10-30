@@ -1,0 +1,37 @@
+name: Aukkhor iOS unsigned build
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ios/**'
+      - '.github/workflows/ios.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Compile app and embedded keyboard
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
+          APP="$RUNNER_TEMP/AukkhorDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          test -d "$APP/PlugIns/AukkhorKeyboard.appex"
+          test -d "$APP/PlugIns/AukkhorShare.appex"
+          test -s "$APP/Assets.car"
+          /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist" | grep -Fx com.apple.keyboard-service
+          mkdir -p "$RUNNER_TEMP/AukkhorPackage/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/AukkhorPackage/Payload/"
+          (cd "$RUNNER_TEMP/AukkhorPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-unsigned.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aukkhor-iOS-unsigned-${{ github.run_number }}
+          path: Aukkhor-unsigned.ipa
+          if-no-files-found: error
+
