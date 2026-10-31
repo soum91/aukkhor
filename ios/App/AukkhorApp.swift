@@ -13,7 +13,7 @@ struct AukkhorHome: View {
     @State private var host = AukkhorSettings.host
     @State private var fingerprint = AukkhorSettings.fingerprint
     @State private var pairingCode = ""
-    @State private var status = "Pair with your Windows companion to get started."
+    @State private var status = "Windows is optional. Pair only if you want PC clipboard sync or remote typing."
     @State private var clipboardSync = AukkhorSettings.syncEnabled
     @State private var keyboardTools = AukkhorSettings.keyboardClipboardEnabled
     @State private var busy = false
@@ -48,7 +48,7 @@ struct AukkhorHome: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Windows companion") {
+                Section("Windows companion (optional)") {
                     TextField("PC IPv4, e.g. 192.168.1.20", text: $host)
                         .textInputAutocapitalization(.never).keyboardType(.numbersAndPunctuation)
                         .autocorrectionDisabled()
@@ -73,7 +73,7 @@ struct AukkhorHome: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Section("Android TV keyboard and iPhone typing") {
+                Section("Android TV keyboard · pair directly, no Windows needed") {
                     TextField("TV IPv4 (e.g. 192.168.1.50)", text: $tvHost)
                         .textInputAutocapitalization(.never)
                         .keyboardType(.numbersAndPunctuation)
@@ -94,7 +94,7 @@ struct AukkhorHome: View {
                         Task { await checkTVPrompt() }
                     }
                     Text(tvStatus).font(.caption).foregroundStyle(.secondary)
-                    Text("Install and select Aukkhor TV Keyboard on your Google TV. The TV detects focused fields; Aukkhor on iPhone opens the typing sheet automatically while this app is active. iOS does not allow reliable background LAN wakeups like the Apple Watch keyboard prompt.")
+                    Text("Connect iPhone directly to the TV using its IP, fingerprint and six-digit code. Windows is NOT required. Install and select Aukkhor TV Keyboard on your Google TV. The TV detects focused fields; Aukkhor on iPhone opens the typing sheet while this app is active. iOS does not allow reliable background LAN wakeups like the Apple Watch keyboard prompt.")
                         .font(.caption).foregroundStyle(.secondary)
                     Button("Forget Android TV pairing", role: .destructive) {
                         Task { await AukkhorTVLink.shared.forget() }
