@@ -28,6 +28,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        CFBundleDisplayName: 'Aukkhor'
+        CFBundleName: 'Aukkhor'
         UILaunchScreen: {}
         NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
@@ -57,6 +59,8 @@ targets:
     info:
       path: Keyboard/Info.plist
       properties:
+        CFBundleDisplayName: 'Aukkhor Keyboard'
+        CFBundleName: 'Aukkhor Keyboard'
         NSLocalNetworkUsageDescription: Aukkhor transfers clipboard text to your paired Windows PC on the local network.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
@@ -84,6 +88,8 @@ targets:
     info:
       path: Share/Info.plist
       properties:
+        CFBundleDisplayName: 'Send code to Windows'
+        CFBundleName: 'Send code to Windows'
         NSLocalNetworkUsageDescription: Aukkhor sends codes you choose to share to your paired Windows PC.
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
         NSExtension:
