@@ -73,7 +73,7 @@ enum KeyboardPreferences {
     static var typingHeight: CGFloat {
         // Four typing rows + compact controls/suggestions + gaps/padding.
         // iOS owns its bottom globe/safe-area strip; do not duplicate that row.
-        keyHeight * 4 + 56 + (numberRow ? keyHeight + 6 : 0)
+        keyHeight * 4 + 48 + (numberRow ? keyHeight + 6 : 0)
     }
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }
@@ -263,10 +263,35 @@ enum KeyboardKeyAppearance {
 // UIButton can insert its image view lazily during layout. Keep the material
 // beneath both label and symbol even after UIKit rebuilds those subviews.
 final class KeyboardButton: UIButton {
+    override var isHighlighted: Bool {
+        didSet { if oldValue != isHighlighted { alpha = isHighlighted ? 0.65 : 1 } }
+    }
     override func layoutSubviews() {
         super.layoutSubviews()
         if let backdrop = subviews.first(where: { $0.tag == 9401 }), subviews.first !== backdrop {
             sendSubviewToBack(backdrop)
         }
+    }
+}
+
+// UIKit asks this view for its own height when embedding it in the keyboard
+// presentation. A generic controller view leaves UIKit to guess that height.
+final class KeyboardInputView: UIInputView {
+    var contentHeight: CGFloat = KeyboardPreferences.typingHeight {
+        didSet {
+            if abs(oldValue - contentHeight) > 0.5 { invalidateIntrinsicContentSize() }
+        }
+    }
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: contentHeight)
+    }
+    override func sizeThatFits(_ size: CGSize) -> CGSize { fittedSize(size) }
+    override func systemLayoutSizeFitting(_ targetSize: CGSize) -> CGSize { fittedSize(targetSize) }
+    override func systemLayoutSizeFitting(_ targetSize: CGSize,
+                                          withHorizontalFittingPriority horizontalFittingPriority: UILayoutPriority,
+                                          verticalFittingPriority: UILayoutPriority) -> CGSize { fittedSize(targetSize) }
+    private func fittedSize(_ target: CGSize) -> CGSize {
+        let width = target.width > 0 && target.width < 10000 ? target.width : bounds.width
+        return CGSize(width: width, height: contentHeight)
     }
 }

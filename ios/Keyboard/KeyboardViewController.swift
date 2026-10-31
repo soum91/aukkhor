@@ -8,6 +8,16 @@ private enum InputMode: Int, CaseIterable {
     }
 }
 
+private struct TypingOptions {
+    let haptics = KeyboardPreferences.haptics
+    let sounds = KeyboardPreferences.keySounds
+    let suggestions = KeyboardPreferences.suggestions
+    let autocorrect = KeyboardPreferences.autocorrect
+    let autoCaps = KeyboardPreferences.autoCapitalize
+    let doubleSpace = KeyboardPreferences.doubleSpacePeriod
+    let glide = KeyboardPreferences.experimentalGlide
+}
+
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback, UIGestureRecognizerDelegate {
     var isPreview = false
     var previewNeedsInputModeSwitchKey = false
@@ -38,7 +48,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var buffer = ""
     private var renderedBuffer = ""
     private let speech = AVSpeechSynthesizer()
+    private let surface = UIView()
     private let backgroundImageView = UIImageView()
+    private let impact = UIImpactFeedbackGenerator(style: .light)
+    private var typingOptions = TypingOptions()
+    private var candidateButtons: [UIButton] = []
+    private var candidateValues = [String](repeating: "", count: 3)
+    private let suggestionHeading = UILabel()
+    private let suggestionQueue = DispatchQueue(label: "dev.soum91.aukkhor.suggestions", qos: .userInitiated)
+    private var suggestionWork: DispatchWorkItem?
+    private var suggestionGeneration = 0
+    private var suggestionRequestKey: String?
+
     private let glassBackdrop = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let stack = UIStackView()
     private let contentStack = UIStackView()
@@ -47,40 +68,65 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let suggestions = UIStackView()
     private let banner = UILabel()
     private var palette = KeyboardPalette.selected(dark: false)
-    var enableInputClicks: Bool { KeyboardPreferences.keySounds }
+    var enableInputClicks: Bool { typingOptions.sounds }
+
+    override func loadView() {
+        let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 0,
+                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .keyboard)
+        root.allowsSelfSizing = true
+        root.autoresizingMask = [.flexibleWidth]
+        root.backgroundColor = .clear
+        root.isOpaque = false
+        inputView = root
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = palette.background
+        surface.translatesAutoresizingMaskIntoConstraints = false
+        surface.accessibilityIdentifier = "keyboard.surface"
+        surface.layer.cornerRadius = 20
+        surface.layer.cornerCurve = .continuous
+        surface.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        surface.clipsToBounds = true
+        surface.isOpaque = false
+        view.addSubview(surface)
+        NSLayoutConstraint.activate([
+            surface.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            surface.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            surface.topAnchor.constraint(equalTo: view.topAnchor),
+            surface.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        impact.prepare()
+        surface.backgroundColor = palette.background
         backgroundImageView.contentMode = .scaleAspectFill
         backgroundImageView.clipsToBounds = true
         backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(backgroundImageView)
+        surface.addSubview(backgroundImageView)
         glassBackdrop.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(glassBackdrop)
+        surface.addSubview(glassBackdrop)
         NSLayoutConstraint.activate([
-            glassBackdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            glassBackdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            glassBackdrop.topAnchor.constraint(equalTo: view.topAnchor),
-            glassBackdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            glassBackdrop.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
+            glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
-            backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            backgroundImageView.topAnchor.constraint(equalTo: view.topAnchor),
-            backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            backgroundImageView.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            backgroundImageView.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            backgroundImageView.topAnchor.constraint(equalTo: surface.topAnchor),
+            backgroundImageView.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         stack.axis = .vertical
         stack.spacing = 6
         contentStack.axis = .horizontal
         contentStack.spacing = 6
         contentStack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(contentStack)
+        surface.addSubview(contentStack)
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
-            contentStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
-            contentStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -4)
+            contentStack.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 4),
+            contentStack.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -4),
+            contentStack.topAnchor.constraint(equalTo: surface.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         contentStack.addArrangedSubview(stack)
         // Messages overlay the existing strip; showing one never resizes the keys.
@@ -91,7 +137,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.layer.cornerRadius = 6
         banner.clipsToBounds = true
         banner.isHidden = true
-        view.addSubview(banner)
+        surface.addSubview(banner)
         NSLayoutConstraint.activate([
             banner.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
@@ -111,6 +157,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             DispatchQueue.main.async {
                 self?.replacements = Dictionary(lexicon.entries.map { ($0.userInput.lowercased(), $0.documentText) },
                                                  uniquingKeysWith: { _, newer in newer })
+                self?.suggestionRequestKey = nil
                 self?.refreshSuggestions()
             }
         }
@@ -151,12 +198,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func feedback() {
-        if KeyboardPreferences.haptics { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-        if KeyboardPreferences.keySounds { UIDevice.current.playInputClick() }
+        if typingOptions.haptics { impact.impactOccurred(); impact.prepare() }
+        if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard KeyboardPreferences.experimentalGlide, mode == .english,
+        guard typingOptions.glide, mode == .english,
               !symbols, !emojiMode, !clipboardPanel,
               let key = (touch.view as? UIButton)?.title(for: .normal),
               key.count == 1, key.first?.isLetter == true else { return false }
@@ -194,7 +241,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func makeButton(_ title: String, action: @escaping () -> Void,
                             foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true) -> UIButton {
-        let button = KeyboardButton(type: .system)
+        let button = KeyboardButton(type: .custom)
         button.setTitle(title, for: .normal)
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
                        "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
@@ -208,7 +255,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.setTitleColor(foreground == .label ? palette.foreground : foreground, for: .normal)
         if surface { KeyboardKeyAppearance.apply(to: button, palette: palette) }
         button.accessibilityLabel = title
-        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; self?.feedback(); action() }, for: .touchUpInside)
+        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return button
@@ -240,6 +287,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func refreshShiftKeys() {
+        UIView.performWithoutAnimation {
         for (button, lowercase) in letterButtons {
             let title = shift ? lowercase.uppercased() : lowercase
             button.setTitle(title, for: .normal)
@@ -247,6 +295,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         shiftButton?.setImage(UIImage(systemName: capsLock ? "shift.fill" : "shift"), for: .normal)
         shiftButton?.tintColor = shift ? palette.accent : palette.foreground
+        }
     }
 
     private func addChars(_ chars: [String]) {
@@ -393,6 +442,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         suggestions.axis = .horizontal
         suggestions.distribution = .fillEqually
         suggestions.spacing = 4
+        installSuggestionControls()
         strip.addArrangedSubview(suggestions)
         strip.addArrangedSubview(stripButton(mode.label, action: { [weak self] in self?.cycleMode() }))
         let hand = stripButton("↔", action: {})
@@ -413,12 +463,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildKeys() {
+        typingOptions = TypingOptions()
+        suggestionWork?.cancel()
+        suggestionGeneration += 1
+        suggestionRequestKey = nil
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
         shiftButton = nil
         let panelHeight: CGFloat = settingsPanel ? 440 : (emojiMode ? 440 : KeyboardPreferences.typingHeight)
         keyboardHeightConstraint?.constant = panelHeight
-        view.backgroundColor = palette.background
+        (inputView as? KeyboardInputView)?.contentHeight = panelHeight
+        surface.backgroundColor = palette.background
         glassBackdrop.isHidden = !(KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass)
         glassBackdrop.effect = UIBlurEffect(style: .systemUltraThinMaterial)
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
@@ -690,7 +745,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard !current.isEmpty else { return }
         let suggestion = KeyboardSuggestions.correction(current, replacements: replacements)
         guard let suggestion,
-              (replacements[current.lowercased()] != nil || KeyboardPreferences.autocorrect) else { return }
+              (replacements[current.lowercased()] != nil || typingOptions.autocorrect) else { return }
         let capitalized = current.first?.isUppercase == true
             ? suggestion.prefix(1).uppercased() + String(suggestion.dropFirst()) : suggestion
         replaceWord(current, with: capitalized)
@@ -707,37 +762,82 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         refreshSuggestions()
     }
 
+    private func installSuggestionControls() {
+        if candidateButtons.isEmpty {
+            suggestionHeading.font = .systemFont(ofSize: 11)
+            suggestionHeading.textAlignment = .center
+            suggestionHeading.adjustsFontSizeToFitWidth = true
+            suggestionHeading.isHidden = true
+            suggestions.addArrangedSubview(suggestionHeading)
+            for index in 0..<3 {
+                let button = stripButton("", action: { [weak self] in
+                    guard let self else { return }
+                    let value = self.candidateValues[index]
+                    if !value.isEmpty { self.applySuggestion(value) }
+                })
+                button.accessibilityIdentifier = "keyboard.candidate.\(index)"
+                button.constraints.filter { $0.firstAttribute == .width }.forEach { $0.isActive = false }
+                button.titleLabel?.font = .systemFont(ofSize: 12)
+                button.isHidden = true
+                candidateButtons.append(button)
+                suggestions.addArrangedSubview(button)
+            }
+        }
+        suggestionHeading.textColor = palette.muted
+        for button in candidateButtons { button.setTitleColor(palette.foreground, for: .normal) }
+    }
+
+    private func setCandidates(_ values: [String], heading: String? = nil) {
+        UIView.performWithoutAnimation {
+            suggestionHeading.text = heading
+            suggestionHeading.isHidden = heading == nil
+            for (index, button) in candidateButtons.enumerated() {
+                let value = heading == nil && index < values.count ? values[index] : ""
+                if candidateValues[index] != value {
+                    candidateValues[index] = value
+                    button.setTitle(value, for: .normal)
+                    button.accessibilityLabel = value
+                }
+                if button.isHidden != value.isEmpty { button.isHidden = value.isEmpty }
+            }
+        }
+    }
+
+    // Coalesce duplicate host callbacks and ignore stale results during fast typing.
+    // Text insertion happens immediately; only optional candidate lookup is deferred.
+    func requestSuggestions(prefix: String, phonetic: Bool, bangla: Bool) {
+        let key = "\(phonetic):\(bangla):\(prefix)"
+        guard suggestionRequestKey != key else { return }
+        suggestionRequestKey = key
+        suggestionGeneration += 1
+        let generation = suggestionGeneration
+        suggestionWork?.cancel()
+        guard !prefix.isEmpty else { setCandidates([]); return }
+        let lexicon = replacements
+        let work = DispatchWorkItem { [weak self] in
+            let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
+                : KeyboardSuggestions.complete(prefix, banglaMode: bangla, replacements: lexicon)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.suggestionGeneration == generation else { return }
+                self.setCandidates(values)
+            }
+        }
+        suggestionWork = work
+        suggestionQueue.asyncAfter(deadline: .now() + 0.025, execute: work)
+    }
+
     private func refreshSuggestions() {
-        suggestions.arrangedSubviews.forEach { suggestions.removeArrangedSubview($0); $0.removeFromSuperview() }
-        if emojiMode {
-            let heading = emojiSearch ? "🔍 \(emojiQuery)" : "Emoji: \(emojiGroup)"
-            let label = UILabel(); label.text = heading; label.textAlignment = .center
-            label.textColor = palette.foreground; label.font = .systemFont(ofSize: 13)
-            suggestions.addArrangedSubview(label)
+        if emojiMode || clipboardPanel || settingsPanel || symbols || !typingOptions.suggestions {
+            suggestionGeneration += 1
+            suggestionWork?.cancel()
+            suggestionRequestKey = nil
+            let heading: String? = emojiMode ? (emojiSearch ? "🔍 \(emojiQuery)" : "Emoji: \(emojiGroup)")
+                : (clipboardPanel ? "Session clipboard" : nil)
+            setCandidates([], heading: heading)
             return
         }
-        if clipboardPanel {
-            let label = UILabel(); label.text = "Clipboard clips stay in memory only"
-            label.textAlignment = .center; label.textColor = palette.muted
-            label.font = .systemFont(ofSize: 12)
-            suggestions.addArrangedSubview(label)
-            return
-        }
-        guard KeyboardPreferences.suggestions, !symbols else { return }
         let text = mode == .phonetic && !buffer.isEmpty ? buffer : currentWord()
-        let candidates = mode == .phonetic
-            ? [PhoneticBangla.transliterate(text)]
-            : KeyboardSuggestions.complete(text, banglaMode: mode == .bangla, replacements: replacements)
-        for candidate in candidates where !candidate.isEmpty {
-            let button = stripButton(candidate, action: { [weak self] in self?.applySuggestion(candidate) })
-            button.setImage(nil, for: .normal)
-            button.setTitle(candidate, for: .normal)
-            // Candidates share the remaining strip width instead of fixed utility-button widths.
-            button.constraints.filter { $0.firstAttribute == .width }.forEach { $0.isActive = false }
-            button.titleLabel?.font = .systemFont(ofSize: 12)
-            button.titleLabel?.adjustsFontSizeToFitWidth = true
-            suggestions.addArrangedSubview(button)
-        }
+        requestSuggestions(prefix: text, phonetic: mode == .phonetic, bangla: mode == .bangla)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
@@ -778,13 +878,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             return
         }
-        if value == " " && KeyboardPreferences.doubleSpacePeriod && mode == .english && !symbols &&
+        if value == " " && typingOptions.doubleSpace && mode == .english && !symbols &&
             Date().timeIntervalSince(lastSpaceTap) < 0.45 &&
             (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(" ") {
             textDocumentProxy.deleteBackward()
             textDocumentProxy.insertText(". ")
             lastSpaceTap = .distantPast
-            if KeyboardPreferences.autoCapitalize && !capsLock { shift = true; refreshShiftKeys() }
+            if typingOptions.autoCaps && !capsLock { shift = true; refreshShiftKeys() }
             return
         }
         if value == " " { lastSpaceTap = Date() }
@@ -806,7 +906,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             textDocumentProxy.insertText(value)
             if mode == .english && !symbols {
                 if value == "." || value == "!" || value == "?" || value == "\n" {
-                    if KeyboardPreferences.autoCapitalize && !capsLock { shift = true; refreshShiftKeys() }
+                    if typingOptions.autoCaps && !capsLock { shift = true; refreshShiftKeys() }
                 } else if value.count == 1 && value.first?.isLetter == true && shift && !capsLock {
                     shift = false
                     refreshShiftKeys()

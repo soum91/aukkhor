@@ -18,6 +18,17 @@ enum KeyboardSuggestions {
         "বাংলাদেশ ভালো বাড়ি বলতে বলো বলুন বন্ধু মনে মনে হয় মা মানুষ আমার মা মেসেজ সবাই শুধু সবসময় " +
         "সময় সকাল সন্ধ্যা সুন্দর হাই হ্যাঁ হবে হয়েছিল").split(separator: " ").map(String.init)
 
+    private struct CompletionWord {
+        let text: String
+        let normalized: String
+    }
+    private static func index(_ words: [String]) -> [String: [CompletionWord]] {
+        Dictionary(grouping: words.map { CompletionWord(text: $0, normalized: $0.lowercased()) },
+                   by: { String($0.normalized.prefix(1)) })
+    }
+    private static let englishIndex = index(english)
+    private static let banglaIndex = index(bangla)
+
     private static let corrections = [
         "teh": "the", "adn": "and", "recieve": "receive", "definately": "definitely",
         "thier": "their", "wierd": "weird", "becuase": "because", "langauge": "language",
@@ -30,9 +41,9 @@ enum KeyboardSuggestions {
         var found: [String] = []
         if let replacement = replacements[normalized] { found.append(replacement) }
         if !banglaMode, let correction = corrections[normalized] { found.append(correction) }
-        for word in (banglaMode ? bangla : english)
-            where word.lowercased().hasPrefix(normalized) && word.lowercased() != normalized {
-            if !found.contains(word) { found.append(word) }
+        for word in (banglaMode ? banglaIndex : englishIndex)[String(normalized.prefix(1))] ?? []
+            where word.normalized.hasPrefix(normalized) && word.normalized != normalized {
+            if !found.contains(word.text) { found.append(word.text) }
             if found.count == 3 { break }
         }
         return Array(found.prefix(3))

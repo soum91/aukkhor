@@ -4,9 +4,16 @@ Native iPhone keyboard with English, phonetic Bangla, and Bangla layouts, plus a
 
 A native iOS custom keyboard and separate Windows companion. The app is a new project, not a Drift dependency.
 
+## Hosted keyboard padding and latency
+
+- The extension now supplies a self-sizing `UIInputView` with an explicit fitting size, a transparent root and a rounded background surface. Keyboard content has no extra vertical inset. The native globe band remains owned by iOS.
+- Candidate buttons are allocated once and reused. Lookup is coalesced on a background queue, with stale results rejected; dictionary normalization is indexed once. Text insertion is not deferred.
+- Typing options and the haptic generator are cached; ordinary keys use immediate highlight feedback instead of system-button fades.
+- Tests now present the keyboard through an actual responder host in addition to standalone geometry checks, and check that rapid prediction changes preserve button identity and cannot repaint stale results. Physical iPhone confirmation is still needed for the reported host-panel padding.
+
 ## Compact height and typing stability
 
-- Removed the extra full-height utility footer. The default typing area is 228 points without numbers and 277 with numbers, down from 289/339; iOS adds its own bottom controls.
+- Removed the extra full-height utility footer. The default typing area is 220 points without numbers and 269 with numbers, down from 289/339; iOS adds its own bottom controls.
 - Shift, caps lock and automatic capitalization update the existing letter buttons. They no longer rebuild all glass effects or reload the background photo while typing.
 - Status messages overlay the top strip instead of moving typing targets. Candidate updates use plain text controls, and app preview renders only when its revision changes.
 - Simulator coverage includes number-row on/off, all handedness modes, both system-globe states, material identity across Shift and stable key positions when status messages appear.
