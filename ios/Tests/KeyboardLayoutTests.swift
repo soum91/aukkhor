@@ -278,6 +278,8 @@ private final class KeyboardHostField: UITextField {
                 keyboard.loadViewIfNeeded()
                 keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: KeyboardPreferences.typingHeight)
                 keyboard.view.layoutIfNeeded()
+                XCTAssertEqual((keyboard.inputView as? KeyboardInputView)?.inputViewStyle, .default,
+                               "The root must not add opaque keyboard chrome over the host plate")
                 let surface = keyboard.view.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" }!
                 let canvas = surface.subviews.first { $0.accessibilityIdentifier == "keyboard.canvasGlass" } as! UIVisualEffectView
                 XCTAssertNil(canvas.effect, "Do not draw a second material inside the system keyboard plate")
@@ -324,7 +326,7 @@ private final class KeyboardHostField: UITextField {
         keyboard.isPreview = true
         keyboard.loadViewIfNeeded()
         let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
-        XCTAssertEqual(root.inputViewStyle, .keyboard, "Retain UIKit's native keyboard backdrop")
+        XCTAssertEqual(root.inputViewStyle, .default, "Let the host supply native keyboard chrome")
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
         let window = UIWindow(windowScene: scene)
         let host = UIViewController()

@@ -73,7 +73,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func loadView() {
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width,
-                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .keyboard)
+                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .default)
         root.allowsSelfSizing = true
         root.autoresizingMask = [.flexibleWidth]
         root.backgroundColor = .clear
