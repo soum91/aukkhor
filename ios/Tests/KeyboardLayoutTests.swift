@@ -256,6 +256,48 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
+    func testSystemCanvasHasNoSeparatePanel() {
+        let oldPreset = KeyboardPreferences.preset
+        let oldStyle = KeyboardPreferences.keycapStyle
+        let oldSeamless = KeyboardPreferences.seamlessBackground
+        let oldNumbers = KeyboardPreferences.numberRow
+        defer {
+            KeyboardPreferences.preset = oldPreset
+            KeyboardPreferences.keycapStyle = oldStyle
+            KeyboardPreferences.seamlessBackground = oldSeamless
+            KeyboardPreferences.numberRow = oldNumbers
+        }
+        KeyboardPreferences.preset = .liquidGlass
+        KeyboardPreferences.seamlessBackground = true
+        for style in [0, 2] {
+            KeyboardPreferences.keycapStyle = style
+            for numbers in [false, true] {
+                KeyboardPreferences.numberRow = numbers
+                let keyboard = KeyboardViewController()
+                keyboard.isPreview = true
+                keyboard.loadViewIfNeeded()
+                keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: KeyboardPreferences.typingHeight)
+                keyboard.view.layoutIfNeeded()
+                let surface = keyboard.view.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" }!
+                let canvas = surface.subviews.first { $0.accessibilityIdentifier == "keyboard.canvasGlass" } as! UIVisualEffectView
+                XCTAssertNil(canvas.effect, "Do not draw a second material inside the system keyboard plate")
+                XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0)
+                XCTAssertEqual(surface.layer.cornerRadius, 0)
+                XCTAssertEqual(canvas.layer.cornerRadius, 0)
+                XCTAssertEqual(surface.frame, keyboard.view.bounds)
+                XCTAssertEqual(canvas.frame, surface.bounds)
+                let space = buttons(in: keyboard.view).first { $0.accessibilityLabel == "Space" }!
+                XCTAssertEqual(space.convert(space.bounds, to: keyboard.view).maxY,
+                               keyboard.view.bounds.maxY, accuracy: 0.5)
+                keyboard.toggleAppearancePanel()
+                XCTAssertNil(canvas.effect, "Settings must use the same seamless background")
+                keyboard.beginAppearanceTransition(true, animated: false)
+                keyboard.endAppearanceTransition()
+                XCTAssertNil(canvas.effect, "Reopening must not reintroduce the inner panel")
+            }
+        }
+    }
+
     func testAdaptiveGlassOverBlackInResponderWindow() async throws {
         guard #available(iOS 26.0, *) else { throw XCTSkip("Native glass needs iOS 26+") }
         let defaults = AukkhorSettings.defaults
@@ -263,13 +305,16 @@ private final class KeyboardHostField: UITextField {
         let savedPreset = KeyboardPreferences.preset
         let savedStyle = KeyboardPreferences.keycapStyle
         let savedNumbers = KeyboardPreferences.numberRow
+        let savedSeamless = KeyboardPreferences.seamlessBackground
         defer {
             if let savedClear { defaults.set(savedClear, forKey: "keyboardClearGlass") }
             else { defaults.removeObject(forKey: "keyboardClearGlass") }
             KeyboardPreferences.preset = savedPreset
             KeyboardPreferences.keycapStyle = savedStyle
             KeyboardPreferences.numberRow = savedNumbers
+            KeyboardPreferences.seamlessBackground = savedSeamless
         }
+        KeyboardPreferences.seamlessBackground = false
         defaults.removeObject(forKey: "keyboardClearGlass")
         XCTAssertFalse(KeyboardPreferences.clearGlass, "Existing unset preferences must use adaptive glass")
         KeyboardPreferences.preset = .liquidGlass
@@ -393,6 +438,7 @@ private final class KeyboardHostField: UITextField {
         let oldInteractive = KeyboardPreferences.interactiveGlass
         let oldSide = KeyboardPreferences.oneHandSide
         let oldForeground = KeyboardPreferences.customForeground
+        let oldSeamless = KeyboardPreferences.seamlessBackground
         defer {
             KeyboardPreferences.preset = oldPreset
             KeyboardPreferences.keycapStyle = oldStyle
@@ -402,7 +448,9 @@ private final class KeyboardHostField: UITextField {
             KeyboardPreferences.interactiveGlass = oldInteractive
             KeyboardPreferences.oneHandSide = oldSide
             KeyboardPreferences.customForeground = oldForeground
+            KeyboardPreferences.seamlessBackground = oldSeamless
         }
+        KeyboardPreferences.seamlessBackground = false
         KeyboardPreferences.preset = .custom
         KeyboardPreferences.customForeground = "#FFFFFF"
         KeyboardPreferences.usesGlass = true

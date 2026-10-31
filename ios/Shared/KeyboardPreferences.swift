@@ -77,6 +77,13 @@ enum KeyboardPreferences {
         set { data.set(newValue, forKey: "keyboardUsesGlass") }
     }
     static var glassEnabled: Bool { preset == .liquidGlass || usesGlass }
+    static var seamlessBackground: Bool {
+        get { data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardSeamlessBackground") }
+    }
+    static var usesSystemCanvas: Bool {
+        seamlessBackground && (preset == .system || glassEnabled)
+    }
     static func setGlassEnabled(_ enabled: Bool) {
         usesGlass = enabled
         if !enabled && preset == .liquidGlass { preset = .custom }
@@ -165,6 +172,7 @@ enum KeyboardPreferences {
         }
         try data.write(to: url, options: .atomic)
         self.data.set(UUID().uuidString, forKey: "keyboardPhotoRevision")
+        seamlessBackground = false
     }
     static func removeBackgroundImage() throws {
         if let url = backgroundFile, FileManager.default.fileExists(atPath: url.path) {
@@ -262,6 +270,17 @@ struct KeyboardPalette {
         effectView.backgroundColor = .clear
         effectView.contentView.backgroundColor = .clear
         effectView.isUserInteractionEnabled = true
+        // UIKit already paints the keyboard plate, including the globe area.
+        // A second, rounded material confined to the extension creates a seam.
+        let systemCanvas = KeyboardPreferences.usesSystemCanvas
+        surface.layer.cornerRadius = systemCanvas ? 0 : 20
+        effectView.layer.cornerRadius = systemCanvas ? 0 : 20
+        if systemCanvas {
+            effectView.effect = nil
+            effectView.overrideUserInterfaceStyle = .unspecified
+            surface.backgroundColor = .clear
+            return
+        }
         guard KeyboardPreferences.glassEnabled, !reducedTransparency else {
             effectView.effect = nil
             effectView.overrideUserInterfaceStyle = .unspecified

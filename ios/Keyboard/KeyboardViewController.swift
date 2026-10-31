@@ -78,6 +78,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         root.autoresizingMask = [.flexibleWidth]
         root.backgroundColor = .clear
         root.isOpaque = false
+        root.accessibilityIdentifier = "aukkhor.keyboard.content"
         inputView = root
     }
 
@@ -491,6 +492,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
+        backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
         hasPhotoBackground = backgroundImageView.image != nil
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
         configureToolsRail()
@@ -626,12 +628,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
         ]))
         stack.addArrangedSubview(row([
+            (KeyboardPreferences.usesSystemCanvas ? "Background: iOS" : "Background: Custom", { [weak self] in
+                let system = !KeyboardPreferences.usesSystemCanvas
+                KeyboardPreferences.seamlessBackground = system
+                if system { KeyboardPreferences.setGlassEnabled(true) }
+                self?.buildKeys()
+            })
+        ]))
+        if !KeyboardPreferences.seamlessBackground {
+        stack.addArrangedSubview(row([
             (KeyboardPreferences.clearGlass ? "Clear glass" : "Frosted glass", { [weak self] in
                 KeyboardPreferences.clearGlass.toggle(); self?.buildKeys()
             }),
             ("Tint −", { [weak self] in KeyboardPreferences.glassTintStrength -= 0.04; self?.buildKeys() }),
             ("Tint +", { [weak self] in KeyboardPreferences.glassTintStrength += 0.04; self?.buildKeys() })
         ]))
+        }
         let colors = UIStackView(arrangedSubviews: [
             colorControl("Background", set: { KeyboardPreferences.customBackground = $0 }),
             colorControl("Keys", set: { KeyboardPreferences.customKey = $0 }),

@@ -82,6 +82,17 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+  AukkhorUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: Aukkhor
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Aukkhor
 schemes:
   Aukkhor:
     build:
@@ -90,6 +101,7 @@ schemes:
     test:
       targets:
         - AukkhorTests
+        - AukkhorUITests
     archive:
       config: Release
 

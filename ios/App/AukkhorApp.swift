@@ -4,9 +4,76 @@ import PhotosUI
 
 @main struct AukkhorApp: App {
     var body: some Scene {
-        WindowGroup { AukkhorHome() }
+        WindowGroup {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-keyboard-system-test") {
+                KeyboardSystemTestHost()
+            } else {
+                AukkhorHome()
+            }
+            #else
+            AukkhorHome()
+            #endif
+        }
     }
 }
+
+#if DEBUG
+// This host uses the installed keyboard extension, never inputViewController
+// injection or the in-app preview. It is excluded from the distributed IPA.
+private struct KeyboardSystemTestHost: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> KeyboardSystemTestController { KeyboardSystemTestController() }
+    func updateUIViewController(_ controller: KeyboardSystemTestController, context: Context) {}
+}
+
+private final class KeyboardSystemTestController: UIViewController {
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        KeyboardPreferences.preset = .liquidGlass
+        KeyboardPreferences.seamlessBackground = true
+        KeyboardPreferences.numberRow = true
+        KeyboardPreferences.keycapStyle = 0
+        KeyboardPreferences.oneHandSide = 2
+        KeyboardPreferences.heightScale = 0.9
+        KeyboardPreferences.keyHeight = 43
+        KeyboardPreferences.autoCapitalize = false
+        AukkhorSettings.defaults.synchronize()
+        let background = CAGradientLayer()
+        background.colors = [UIColor.systemTeal.cgColor, UIColor.systemPurple.cgColor, UIColor.systemOrange.cgColor]
+        background.startPoint = .zero
+        background.endPoint = CGPoint(x: 1, y: 1)
+        background.frame = view.bounds
+        view.layer.insertSublayer(background, at: 0)
+        let field = UITextField()
+        field.accessibilityIdentifier = "system-test-field"
+        field.placeholder = "Type here"
+        field.borderStyle = .roundedRect
+        field.translatesAutoresizingMaskIntoConstraints = false
+        field.autocorrectionType = .no
+        field.autocapitalizationType = .none
+        field.keyboardAppearance = .dark
+        view.addSubview(field)
+        let dismiss = UIButton(type: .system)
+        dismiss.setTitle("Dismiss keyboard", for: .normal)
+        dismiss.accessibilityIdentifier = "system-test-dismiss"
+        dismiss.translatesAutoresizingMaskIntoConstraints = false
+        dismiss.addAction(UIAction { [weak self] _ in self?.view.endEditing(true) }, for: .touchUpInside)
+        view.addSubview(dismiss)
+        NSLayoutConstraint.activate([
+            field.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
+            field.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            field.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
+            field.heightAnchor.constraint(equalToConstant: 44),
+            dismiss.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 20),
+            dismiss.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+        ])
+    }
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        view.layer.sublayers?.first?.frame = view.bounds
+    }
+}
+#endif
 
 struct AukkhorHome: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -315,6 +382,10 @@ struct AukkhorHome: View {
                 previewRevision = UUID()
             }))
         if KeyboardPreferences.glassEnabled {
+            Toggle("Blend background with iOS", isOn: Binding(
+                get: { KeyboardPreferences.seamlessBackground },
+                set: { KeyboardPreferences.seamlessBackground = $0; previewRevision = UUID() }))
+            if !KeyboardPreferences.seamlessBackground {
             Picker("Glass appearance", selection: Binding(
                 get: { KeyboardPreferences.clearGlass },
                 set: { KeyboardPreferences.clearGlass = $0; previewRevision = UUID() })) {
@@ -330,8 +401,9 @@ struct AukkhorHome: View {
             Toggle("Glass touch response", isOn: Binding(
                 get: { KeyboardPreferences.interactiveGlass },
                 set: { KeyboardPreferences.interactiveGlass = $0 }))
+            }
         }
-        Text("Glass covers the keyboard surface even with Keycaps: None. Frosted is recommended for plain or dark apps; Clear is best over a photo or colorful content. Available backdrop detail depends on the host app. Native glass requires iOS 26 or later; older iOS uses blur. Reduce Transparency uses the solid theme background.")
+        Text("Blend background with iOS uses one native keyboard background, including with Keycaps: None. Turn it off for a separate custom glass or photo surface in the typing area. iOS controls the surrounding margins and globe area; custom surfaces can have a visible edge there.")
             .font(.caption).foregroundStyle(.secondary)
     }
 
