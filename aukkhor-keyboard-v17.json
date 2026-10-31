@@ -20,7 +20,7 @@
           "buildVersion": "38",
           "date": "2026-10-31",
           "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+          "changelog": "Glass rendering correction: adaptive Frosted glass is the default for unset preferences; explicit Clear choices are preserved. Restore the native keyboard backdrop and refresh the canvas material after window presentation. Clear/Frosted controls now refresh the app preview. Retains build 37 compact height and removable keycaps. Eight simulator tests passed, including pixel checks over a black responder host on first opening and reopening; physical-device appearance remains unverified.",
           "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.38/Aukkhor-unsigned.ipa",
           "size": 1228077,
           "minOSVersion": "16.0"
