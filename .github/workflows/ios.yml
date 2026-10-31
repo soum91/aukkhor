@@ -78,7 +78,7 @@ jobs:
           echo "AUKKHOR_SIMULATOR=$DEVICE" >> "$GITHUB_ENV"
           defaults write com.apple.iphonesimulator ConnectHardwareKeyboard -bool NO
           xcrun simctl boot "$DEVICE" || true
-          open -a Simulator --args -CurrentDeviceUDID "$DEVICE"
+          open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           xcodebuild test -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/AukkhorSimulatorDerived" -parallel-testing-enabled NO -only-testing:AukkhorTests -resultBundlePath KeyboardLayout.xcresult CODE_SIGNING_ALLOWED=NO
       - name: Test installed keyboard extension and capture full screen
@@ -87,7 +87,7 @@ jobs:
           set -euo pipefail
           xcrun simctl shutdown "$AUKKHOR_SIMULATOR"
           xcrun simctl boot "$AUKKHOR_SIMULATOR"
-          open -a Simulator --args -CurrentDeviceUDID "$AUKKHOR_SIMULATOR"
+          open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$AUKKHOR_SIMULATOR"
           xcrun simctl bootstatus "$AUKKHOR_SIMULATOR" -b
           set +e
           xcodebuild test -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Debug -destination "platform=iOS Simulator,id=$AUKKHOR_SIMULATOR" -derivedDataPath "$RUNNER_TEMP/AukkhorSimulatorDerived" -parallel-testing-enabled NO -only-testing:AukkhorUITests -resultBundlePath KeyboardIntegration.xcresult CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$RUNNER_TEMP/AukkhorUITest.log"
@@ -97,7 +97,7 @@ jobs:
             echo 'Restarting simulator once after accessibility-service initialization failure'
             xcrun simctl shutdown "$AUKKHOR_SIMULATOR"
             xcrun simctl boot "$AUKKHOR_SIMULATOR"
-            open -a Simulator --args -CurrentDeviceUDID "$AUKKHOR_SIMULATOR"
+            open -a "$(xcode-select -p)/Applications/Simulator.app" --args -CurrentDeviceUDID "$AUKKHOR_SIMULATOR"
             xcrun simctl bootstatus "$AUKKHOR_SIMULATOR" -b
             xcodebuild test -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Debug -destination "platform=iOS Simulator,id=$AUKKHOR_SIMULATOR" -derivedDataPath "$RUNNER_TEMP/AukkhorSimulatorDerived" -parallel-testing-enabled NO -only-testing:AukkhorUITests -resultBundlePath KeyboardIntegrationRetry.xcresult CODE_SIGNING_ALLOWED=NO
           else
