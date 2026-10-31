@@ -82,7 +82,7 @@ jobs:
           python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE"
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add repo.json source.json
+          git add repo.json source.json aukkhor-keyboard-v17.json
           if [ "$MODE" = direct ]; then
             git add -f "downloads/v0.2.0.$BUILD/"*.ipa
             test -f "downloads/v0.2.0.$BUILD/Aukkhor-unsigned.ipa"
