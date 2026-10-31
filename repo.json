@@ -10,11 +10,21 @@
       "name": "Aukkhor",
       "bundleIdentifier": "dev.soum91.aukkhor",
       "developerName": "soum91",
-      "subtitle": "iPhone keyboard · 0.2.0.20",
+      "subtitle": "iPhone keyboard · 0.2.0.21",
       "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
       "category": "utilities",
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
+        {
+          "version": "0.2.0.21",
+          "buildVersion": "21",
+          "date": "2026-10-31",
+          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
+          "changelog": "Removed Share extension and all standalone probes; only host and keyboard remain.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.21/Aukkhor-unsigned.ipa",
+          "size": 1091595,
+          "minOSVersion": "16.0"
+        },
         {
           "version": "0.2.0.20",
           "buildVersion": "20",
@@ -64,17 +74,6 @@
           "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.12/Aukkhor-unsigned.ipa",
           "size": 1147036,
           "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.11",
-          "buildVersion": "11",
-          "date": "2026-10-30",
-          "localizedDescription": "iPhone keyboard with English, phonetic Bangla and direct Bangla, themes, TV focused-field typing, and opt-in Windows remote typing. Compatibility IPA is available with reduced cross-extension entitlements. Unsigned previews: sign all app extensions and the host app correctly.",
-          "changelog": "iPhone keyboard with English, phonetic Bangla and direct Bangla, themes, TV focused-field typing, and opt-in Windows remote typing. Compatibility IPA is available with reduced cross-extension entitlements. Unsigned previews: sign all app extensions and the host app correctly.",
-          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.11/Aukkhor-unsigned.ipa",
-          "size": 1147036,
-          "minOSVersion": "16.0",
-          "compatibilityURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.11/Aukkhor-compat-unsigned.ipa"
         }
       ]
     }
