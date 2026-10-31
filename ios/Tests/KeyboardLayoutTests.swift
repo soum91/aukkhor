@@ -23,6 +23,7 @@ import UIKit
                     KeyboardPreferences.oneHandSide = side
                     KeyboardPreferences.preset = preset
                     let keyboard = KeyboardViewController()
+                    keyboard.isPreview = true
                     keyboard.loadViewIfNeeded()
                     keyboard.view.frame = CGRect(x: 0, y: 0, width: width, height: 400)
                     keyboard.view.layoutIfNeeded()
@@ -65,7 +66,8 @@ import UIKit
         KeyboardPreferences.preset = .liquidGlass
         KeyboardPreferences.keycapStyle = 0
         let keyboard = KeyboardViewController()
-        keyboard.loadViewIfNeeded()
+        keyboard.isPreview = true
+                    keyboard.loadViewIfNeeded()
         keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: 400)
         keyboard.view.layoutIfNeeded()
         let all = buttons(in: keyboard.view)

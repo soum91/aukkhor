@@ -104,6 +104,7 @@ struct AukkhorHome: View {
                                     }
                                     try KeyboardPreferences.setBackgroundImage(image)
                                     themePhoto = KeyboardPreferences.backgroundImage
+                                    previewRevision = UUID()
                                     backgroundStatus = "Photo saved locally. Reopen the keyboard to see it."
                                 } catch { backgroundStatus = error.localizedDescription }
                             }
@@ -113,6 +114,7 @@ struct AukkhorHome: View {
                                 do {
                                     try KeyboardPreferences.removeBackgroundImage()
                                     themePhoto = nil
+                                    previewRevision = UUID()
                                     backgroundStatus = "Photo removed."
                                 } catch { backgroundStatus = error.localizedDescription }
                             }
@@ -425,7 +427,9 @@ struct AukkhorHome: View {
 private struct KeyboardThemePreview: UIViewControllerRepresentable {
     let revision: UUID
     func makeUIViewController(context: Context) -> KeyboardViewController {
-        KeyboardViewController()
+        let controller = KeyboardViewController()
+        controller.isPreview = true
+        return controller
     }
     func updateUIViewController(_ controller: KeyboardViewController, context: Context) {
         controller.reloadAppearance()

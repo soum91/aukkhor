@@ -75,11 +75,19 @@ jobs:
           set -euo pipefail
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for v in d["devices"].values() for x in v if x["name"].startswith("iPhone")))')
           xcodebuild test -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -resultBundlePath KeyboardLayout.xcresult CODE_SIGNING_ALLOWED=NO
+      - name: Export keyboard screenshots
+        if: always()
+        run: |
+          if [ -d KeyboardLayout.xcresult ]; then
+            xcrun xcresulttool export attachments --path KeyboardLayout.xcresult --output-path KeyboardScreenshots
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Aukkhor-layout-test-evidence-${{ github.run_number }}
-          path: KeyboardLayout.xcresult
+          path: |
+            KeyboardLayout.xcresult
+            KeyboardScreenshots
       - uses: actions/upload-artifact@v4
         with:
           name: Aukkhor-iOS-unsigned-${{ github.run_number }}

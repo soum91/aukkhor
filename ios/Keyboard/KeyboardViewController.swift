@@ -9,6 +9,7 @@ private enum InputMode: Int, CaseIterable {
 }
 
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback, UIGestureRecognizerDelegate {
+    var isPreview = false
     private var mode: InputMode = .english
     private var shift = false
     private var capsLock = false
@@ -84,12 +85,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glide.cancelsTouchesInView = true
         glide.delegate = self
         view.addGestureRecognizer(glide)
+        if !isPreview {
         requestSupplementaryLexicon { [weak self] lexicon in
             DispatchQueue.main.async {
                 self?.replacements = Dictionary(lexicon.entries.map { ($0.userInput.lowercased(), $0.documentText) },
                                                  uniquingKeysWith: { _, newer in newer })
                 self?.refreshSuggestions()
             }
+        }
         }
         buildKeys()
     }
@@ -166,11 +169,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             foreground: UIColor = .label, weight: CGFloat = 1) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
+        let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
+                       "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
+        if let name = symbols[title], let icon = UIImage(systemName: name) {
+            button.setTitle(nil, for: .normal)
+            button.setImage(icon, for: .normal)
+            button.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 22, weight: .regular), forImageIn: .normal)
+            button.tintColor = palette.foreground
+        }
         button.titleLabel?.font = .systemFont(ofSize: title.count > 3 ? 14 : 23, weight: .regular)
         button.setTitleColor(foreground == .label ? palette.foreground : foreground, for: .normal)
         KeyboardKeyAppearance.apply(to: button, palette: palette)
         button.accessibilityLabel = title
-        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in self?.feedback(); action() }, for: .touchUpInside)
+        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; self?.feedback(); action() }, for: .touchUpInside)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return button
