@@ -30,22 +30,20 @@ import XCTest
         XCTAssertTrue(app.textFields["system-test-field"].waitForExistence(timeout: 10))
 
         let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
-        settings.launch()
-        XCTAssertTrue(tap("General", in: settings), "Open General settings")
-        XCTAssertTrue(tap("Keyboard", in: settings), "Open Keyboard settings")
-        // The enclosing page is also titled "Keyboards". Its navigation title
-        // is hittable, so select the actual Settings row by its stable ID.
-        let installedKeyboards = settings.cells["KEYBOARDS"]
-        XCTAssertTrue(installedKeyboards.waitForExistence(timeout: 8), "Find the installed keyboard list row")
-        installedKeyboards.tap()
-        if !settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch.exists {
-            XCTAssertTrue(tap("Add New Keyboard…", in: settings) || tap("Add New Keyboard...", in: settings),
-                          "Open Add New Keyboard")
-            let entry = settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
-            XCTAssertTrue(entry.waitForExistence(timeout: 10), "Installed extension must be offered by iOS Settings")
-            entry.tap()
-            _ = tap("Done", in: settings, timeout: 2)
+        // The public app-settings URL goes straight to our keyboard switches,
+        // without depending on Settings' changing General-page navigation.
+        app.buttons["system-test-settings"].tap()
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 20))
+        XCTAssertTrue(tap("Keyboards", in: settings), "Open Aukkhor's keyboard switches")
+        let enabled = settings.switches.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
+        XCTAssertTrue(enabled.waitForExistence(timeout: 10), "Installed extension must be offered by iOS Settings")
+        if enabled.value as? String != "1" {
+            enabled.tap()
+            if settings.alerts.buttons["Allow"].waitForExistence(timeout: 1) {
+                settings.alerts.buttons["Allow"].tap()
+            }
         }
+        XCTAssertEqual(enabled.value as? String, "1")
         evidence("extension-enabled-in-system-settings")
 
         app.activate()

@@ -7,7 +7,7 @@ import PhotosUI
         WindowGroup {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("-keyboard-system-test") {
-                KeyboardSystemTestHost()
+                KeyboardSystemTestHost().ignoresSafeArea()
             } else {
                 AukkhorHome()
             }
@@ -59,13 +59,23 @@ private final class KeyboardSystemTestController: UIViewController {
         dismiss.translatesAutoresizingMaskIntoConstraints = false
         dismiss.addAction(UIAction { [weak self] _ in self?.view.endEditing(true) }, for: .touchUpInside)
         view.addSubview(dismiss)
+        let settings = UIButton(type: .system)
+        settings.setTitle("Open keyboard settings", for: .normal)
+        settings.accessibilityIdentifier = "system-test-settings"
+        settings.translatesAutoresizingMaskIntoConstraints = false
+        settings.addAction(UIAction { _ in
+            UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
+        }, for: .touchUpInside)
+        view.addSubview(settings)
         NSLayoutConstraint.activate([
-            field.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 40),
+            field.topAnchor.constraint(equalTo: view.topAnchor, constant: 120),
             field.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             field.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
             field.heightAnchor.constraint(equalToConstant: 44),
             dismiss.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 20),
-            dismiss.centerXAnchor.constraint(equalTo: view.centerXAnchor)
+            dismiss.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            settings.topAnchor.constraint(equalTo: dismiss.bottomAnchor, constant: 20),
+            settings.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
     }
     override func viewDidLayoutSubviews() {
