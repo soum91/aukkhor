@@ -66,7 +66,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 - A code from Aukkhor is not inserted into an arbitrary Windows app automatically. Place the cursor in the intended field and press **Ctrl + Alt + B**, or click **Copy code** in the companion. The Windows companion must be running in the signed-in session.
 - Initial pairing sends the pairing code over a TLS connection pinned to the fingerprint verified by the user. Credentials are stored in the iOS shared Keychain and the Windows user's DPAPI-protected settings. A certificate mismatch always fails closed.
 - Pairing is per computer; reset/re-pair if Windows regenerates its certificate. Never publish certificates with their private keys, tokens, or signing material.
-- Current signed iOS installations must preserve the App Group and shared Keychain entitlements across the host app and both extensions. A signer that strips either capability breaks shared pairing; no unsupported entitlement bypass is included.
+- Current signed iOS installations must preserve the App Group and shared Keychain entitlements across the host app and keyboard extension. A signer that strips either capability breaks shared pairing; no unsupported entitlement bypass is included.
 - Native Bangla and phonetic Bangla input are first-pass layouts, not complete Avro/Probhat implementations. More dictionary/rule testing is needed with native speakers.
 - Predictive suggestions currently use a small built-in lexicon, not Apple's private prediction engine. Gboard's cloud search, GIF lookup, translation, advanced glide model, and Apple's microphone dictation are not reproduced.
 
@@ -127,23 +127,12 @@ Aukkhor is foregrounded, focused native Windows Edit/RichEdit controls can trigg
 typing sheet. Text is inserted on explicit Send using Unicode input events. Browser web inputs,
 password fields and elevated windows are not automatically supported or bypassed.
 
-## iOS installation: standard and compatibility builds
+## iOS installation
 
-The normal IPA preserves the keyboard's shared App Group and Keychain requirements. If your
-signer rejects those entitlements, use `Aukkhor-compat-unsigned.ipa` instead. It includes the
-keyboard and Share extension but strips optional App Group and custom Keychain-sharing
-entitlements. **Limitations of the compat variant:** shared settings, photo themes, Windows
-pairing across the host app and keyboard extension may not function; TV pairing and remote
-typing work in the main app using its private Keychain.
+Current releases contain one unsigned IPA with the main app and keyboard extension. The Share extension and standalone installation probes are excluded as requested.
 
-Both IPAs are **unsigned** and need re-signing. Re-sign the **host app and both embedded .appex
-extensions** with compatible bundle IDs, valid provisioning profiles and a common signing
-identity; a signer that signs only the host does not produce an installable keyboard app.
-The CI audit confirms arm64 and an iPhoneOS minimum deployment target of iOS 16.0. The current
-runner used Xcode 26.6 and iPhoneOS SDK 26.5, which by itself does not establish a device
-incompatibility with iOS 27.
+Sign the host app and embedded `AukkhorKeyboard.appex` with a common signing identity and valid profiles. Keep the App Group and shared Keychain entitlements consistent to share host theme preferences, photos and Windows pairing with the keyboard. If a signer removes App Group access, keyboard-local settings under ⚙ persist independently; photo sharing and host-to-keyboard preference sharing require the shared container. Pairing in the main app remains separate from keyboard-local preferences.
 
-For exact failure diagnosis obtain the full installation error code / log from FlareStore or
-EmberSign. Typical causes include missing profiles, invalid signing entitlements, app identifier
-mismatches, and incorrectly signed embedded extensions. Do not assume an Xcode or hardware
-problem from a generic 'Could not install' message.
+The build audits the keyboard-service identifier, display names, iPhoneOS metadata, arm64 binaries and absence of the Share extension. Simulator tests check actual row geometry, Space width, glass views and background-free keycaps; physical iPhone registration, signing, host-app behavior and TV/Windows connections still need device testing.
+
+For an installation failure, retain the full error code and log from FlareStore or EmberSign. A signer must provision both app identifiers and sign the embedded keyboard, as well as the host.
