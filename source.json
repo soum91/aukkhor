@@ -16,6 +16,16 @@
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
         {
+          "version": "0.2.0.13",
+          "buildVersion": "13",
+          "date": "2026-10-31",
+          "localizedDescription": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
+          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.13/Aukkhor-unsigned.ipa",
+          "size": 1147103,
+          "minOSVersion": "16.0"
+        },
+        {
           "version": "0.2.0.12",
           "buildVersion": "12",
           "date": "2026-10-30",
@@ -74,72 +84,6 @@
           "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Unsigned IPA: sign with your own valid iOS provisioning profile.",
           "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.7/Aukkhor-unsigned.ipa",
           "size": 343119,
-          "minOSVersion": "16.0"
-        }
-      ]
-    },
-    {
-      "name": "Aukkhor Compatibility Test",
-      "bundleIdentifier": "dev.soum91.aukkhor",
-      "developerName": "soum91",
-      "subtitle": "Aukkhor installation diagnostic · 0.2.0.12",
-      "localizedDescription": "No App Group or shared Keychain entitlements. Main app and two extensions, but cross-extension settings and pairing may not work. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-      "category": "utilities",
-      "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
-      "diagnostic": true,
-      "versions": [
-        {
-          "version": "0.2.0.12",
-          "buildVersion": "12",
-          "date": "2026-10-30",
-          "localizedDescription": "No App Group or shared Keychain entitlements. Main app and two extensions, but cross-extension settings and pairing may not work. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "changelog": "No App Group or shared Keychain entitlements. Main app and two extensions, but cross-extension settings and pairing may not work. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.12/Aukkhor-compat-unsigned.ipa",
-          "size": 1147054,
-          "minOSVersion": "16.0"
-        }
-      ]
-    },
-    {
-      "name": "Aukkhor Keyboard-Only Test",
-      "bundleIdentifier": "dev.soum91.aukkhor",
-      "developerName": "soum91",
-      "subtitle": "Aukkhor installation diagnostic · 0.2.0.12",
-      "localizedDescription": "Main app plus keyboard extension only. No Share extension and no optional sharing entitlements. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-      "category": "utilities",
-      "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
-      "diagnostic": true,
-      "versions": [
-        {
-          "version": "0.2.0.12",
-          "buildVersion": "12",
-          "date": "2026-10-30",
-          "localizedDescription": "Main app plus keyboard extension only. No Share extension and no optional sharing entitlements. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "changelog": "Main app plus keyboard extension only. No Share extension and no optional sharing entitlements. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.12/Aukkhor-keyboard-only-unsigned.ipa",
-          "size": 1085827,
-          "minOSVersion": "16.0"
-        }
-      ]
-    },
-    {
-      "name": "Aukkhor Standalone Install Probe",
-      "bundleIdentifier": "dev.soum91.aukkhor.probe",
-      "developerName": "soum91",
-      "subtitle": "Aukkhor installation diagnostic · 0.2.0.12",
-      "localizedDescription": "Installation diagnostic: containing app only, no keyboard or Share extension. Not a functioning keyboard. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-      "category": "utilities",
-      "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
-      "diagnostic": true,
-      "versions": [
-        {
-          "version": "0.2.0.12",
-          "buildVersion": "12",
-          "date": "2026-10-30",
-          "localizedDescription": "Installation diagnostic: containing app only, no keyboard or Share extension. Not a functioning keyboard. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "changelog": "Installation diagnostic: containing app only, no keyboard or Share extension. Not a functioning keyboard. Unsigned IPA, must sign with valid iOS certificate and compatible provisioning. This diagnostic may replace another Aukkhor variant with the same bundle ID.",
-          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.12/Aukkhor-standalone-probe-unsigned.ipa",
-          "size": 973584,
           "minOSVersion": "16.0"
         }
       ]
