@@ -42,8 +42,6 @@ targets:
     dependencies:
       - target: AukkhorKeyboard
         embed: true
-      - target: AukkhorShare
-        embed: true
   AukkhorKeyboard:
     type: app-extension
     platform: iOS
@@ -73,33 +71,6 @@ targets:
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
     entitlements:
       path: Keyboard/AukkhorKeyboard.entitlements
-  AukkhorShare:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: Share
-      - path: Shared
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.soum91.aukkhor.share
-        GENERATE_INFOPLIST_FILE: NO
-        INFOPLIST_KEY_CFBundleDisplayName: Send code to Windows
-        APPLICATION_EXTENSION_API_ONLY: YES
-    info:
-      path: Share/Info.plist
-      properties:
-        CFBundleDisplayName: 'Send code to Windows'
-        CFBundleName: 'Send code to Windows'
-        NSLocalNetworkUsageDescription: Aukkhor sends codes you choose to share to your paired Windows PC.
-        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
-        NSExtension:
-          NSExtensionPointIdentifier: com.apple.share-services
-          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
-          NSExtensionAttributes:
-            NSExtensionActivationRule:
-              NSExtensionActivationSupportsText: true
-    entitlements:
-      path: Share/AukkhorShare.entitlements
 schemes:
   Aukkhor:
     build:
