@@ -27,6 +27,8 @@ private final class KeyboardHostField: UITextField {
 }
 
 @MainActor final class KeyboardLayoutTests: XCTestCase {
+    private var evidenceWindow: UIWindow?
+    private var evidenceKeyboard: ObjectIdentifier?
     private func buttons(in view: UIView) -> [UIButton] {
         (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
     }
@@ -36,35 +38,53 @@ private final class KeyboardHostField: UITextField {
             XCTFail("No window scene for on-screen keyboard evidence")
             return
         }
-        let window = UIWindow(windowScene: scene)
-        window.frame = keyboard.view.frame
-        if patternedBackdrop {
-            let host = UIViewController()
-            host.view.frame = window.bounds
-            let pattern = GlassTestBackdrop(frame: window.bounds)
-            pattern.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            host.view.addSubview(pattern)
-            if keyboard.parent != nil {
-                keyboard.willMove(toParent: nil)
-                keyboard.view.removeFromSuperview()
-                keyboard.removeFromParent()
-            }
-            host.addChild(keyboard)
-            host.view.addSubview(keyboard.view)
+        let window: UIWindow
+        if patternedBackdrop, evidenceKeyboard == ObjectIdentifier(keyboard), let existing = evidenceWindow {
+            // Updating a panel should resize the existing window, as it does on-device.
+            // Moving a live material to another window invalidates its backdrop group.
+            window = existing
+            window.frame = keyboard.view.frame
+            window.rootViewController?.view.frame = window.bounds
             keyboard.view.frame = window.bounds
-            keyboard.didMove(toParent: host)
-            window.rootViewController = host
-        } else { window.rootViewController = keyboard }
-        window.isHidden = false
-        keyboard.view.layoutIfNeeded()
-        let rendered = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { _ in
-            keyboard.view.drawHierarchy(in: keyboard.view.bounds, afterScreenUpdates: true)
+        } else {
+            evidenceWindow?.isHidden = true
+            evidenceWindow = nil
+            evidenceKeyboard = nil
+            window = UIWindow(windowScene: scene)
+            window.frame = keyboard.view.frame
+            if patternedBackdrop {
+                let host = UIViewController()
+                host.view.frame = window.bounds
+                let pattern = GlassTestBackdrop(frame: window.bounds)
+                pattern.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+                host.view.addSubview(pattern)
+                if keyboard.parent != nil {
+                    keyboard.willMove(toParent: nil)
+                    keyboard.view.removeFromSuperview()
+                    keyboard.removeFromParent()
+                }
+                host.addChild(keyboard)
+                host.view.addSubview(keyboard.view)
+                keyboard.view.frame = window.bounds
+                keyboard.didMove(toParent: host)
+                window.rootViewController = host
+                evidenceWindow = window
+                evidenceKeyboard = ObjectIdentifier(keyboard)
+            } else { window.rootViewController = keyboard }
         }
-        let attachment = XCTAttachment(image: rendered)
+        window.isHidden = false
+        let target = patternedBackdrop ? window.rootViewController!.view! : keyboard.view!
+        target.layoutIfNeeded()
+        let rendered = UIGraphicsImageRenderer(bounds: target.bounds).image { _ in
+            target.drawHierarchy(in: target.bounds, afterScreenUpdates: true)
+        }
+        // Freeze the pixel buffer before another test changes an effect or window.
+        let snapshot = rendered.pngData().flatMap(UIImage.init(data:)) ?? rendered
+        let attachment = XCTAttachment(image: snapshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        window.isHidden = true
+        if !patternedBackdrop { window.isHidden = true }
     }
 
     func testNativeGeometryAndBackgroundRemoval() {
@@ -330,8 +350,8 @@ private final class KeyboardHostField: UITextField {
             let glass = try XCTUnwrap(canvas(in: keyboard.view))
             let native = try XCTUnwrap(glass.effect as? UIGlassEffect)
             XCTAssertTrue(native.isInteractive)
-            XCTAssertEqual(glass.overrideUserInterfaceStyle, .dark,
-                           "White theme text needs the dark material appearance")
+            XCTAssertEqual(glass.overrideUserInterfaceStyle, clear ? .unspecified : .dark,
+                           "Clear inherits the host; frosted glass keeps custom white text readable")
             XCTAssertEqual(glass.alpha, 1)
             let surface = try XCTUnwrap(keyboard.view.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" })
             XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0,

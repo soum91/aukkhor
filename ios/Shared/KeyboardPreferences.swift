@@ -266,7 +266,9 @@ struct KeyboardPalette {
         // Resolve against the parent so a previous override cannot lock System mode.
         let text = palette.foreground.resolvedColor(with: surface.traitCollection)
         var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
-        if text.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+        if KeyboardPreferences.clearGlass {
+            effectView.overrideUserInterfaceStyle = .unspecified
+        } else if text.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
             let luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722
             effectView.overrideUserInterfaceStyle = luminance > 0.6 ? .dark : .light
         } else { effectView.overrideUserInterfaceStyle = .unspecified }
