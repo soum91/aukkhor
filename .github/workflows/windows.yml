@@ -6,7 +6,7 @@ on:
       - 'windows/**'
       - '.github/workflows/windows.yml'
 permissions:
-  contents: read
+  contents: write
 jobs:
   publish:
     runs-on: windows-latest
@@ -26,4 +26,27 @@ jobs:
           name: Aukkhor-Windows-x64-${{ github.run_number }}
           path: Aukkhor-Windows-x64.zip
           if-no-files-found: error
+      - name: Publish Windows companion ZIP to GitHub Releases
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = "windows-v0.1.0.${{ github.run_number }}"
+          $title = "Aukkhor Windows Companion v0.1.0.${{ github.run_number }}"
+          $notes = @"
+          Aukkhor Windows companion (Windows x64, self-contained).
+          Download Aukkhor-Windows-x64.zip, extract it, and run Aukkhor.Windows.exe.
+          Provides optional Windows pairing, clipboard sync, OTP handoff, and remote typing.
+          Windows pairing is NOT required to pair Aukkhor on iPhone directly with Android TV.
+          Pair only with devices on a trusted private network.
+          "@
+          gh release create $tag Aukkhor-Windows-x64.zip --title $title --notes $notes --target $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw "GitHub release creation failed" }
+          $assets = gh release view $tag --json assets | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not ($assets.assets | Where-Object { $_.name -eq 'Aukkhor-Windows-x64.zip' })) {
+            throw "Windows ZIP was not attached to the published release"
+          }
+          Write-Host "Published and verified $tag / Aukkhor-Windows-x64.zip"
+
 
