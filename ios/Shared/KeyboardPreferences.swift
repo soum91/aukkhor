@@ -70,6 +70,10 @@ enum KeyboardPreferences {
         get { CGFloat(data.object(forKey: "keyboardCornerRadius") as? Double ?? 7) }
         set { data.set(Double(newValue), forKey: "keyboardCornerRadius") }
     }
+    static var typingHeight: CGFloat {
+        // Suggestion strip + four typing rows + globe footer + six row gaps/padding.
+        keyHeight * 5 + 74 + (numberRow ? keyHeight + 7 : 0)
+    }
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardHaptics") }

@@ -39,6 +39,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let stack = UIStackView()
     private let contentStack = UIStackView()
     private var toolsExpanded = false
+    private var keyboardHeightConstraint: NSLayoutConstraint?
     private let suggestions = UIStackView()
     private let banner = UILabel()
     private var palette: KeyboardPalette {
@@ -81,6 +82,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             contentStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
             view.heightAnchor.constraint(greaterThanOrEqualToConstant: 260)
         ])
+        let preferredHeight = view.heightAnchor.constraint(equalToConstant: KeyboardPreferences.typingHeight)
+        preferredHeight.priority = UILayoutPriority(999)
+        preferredHeight.isActive = true
+        keyboardHeightConstraint = preferredHeight
         let glide = UIPanGestureRecognizer(target: self, action: #selector(handleGlide(_:)))
         glide.cancelsTouchesInView = true
         glide.delegate = self
@@ -304,6 +309,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildKeys() {
+        let panelHeight: CGFloat = settingsPanel ? 440 : (emojiMode ? 440 : KeyboardPreferences.typingHeight)
+        keyboardHeightConstraint?.constant = panelHeight
         view.backgroundColor = palette.background
         glassBackdrop.isHidden = !(KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass)
         glassBackdrop.effect = UIBlurEffect(style: .systemUltraThinMaterial)

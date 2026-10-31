@@ -68,7 +68,7 @@ struct AukkhorHome: View {
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
                     KeyboardThemePreview(revision: previewRevision)
-                        .frame(height: numberRow ? 420 : 370)
+                        .frame(height: KeyboardPreferences.typingHeight)
                         .listRowInsets(EdgeInsets())
                     Text("Live keyboard preview. Use ⚙ in the keyboard to change keycaps directly if your signer does not preserve shared settings.")
                         .font(.caption).foregroundStyle(.secondary)
