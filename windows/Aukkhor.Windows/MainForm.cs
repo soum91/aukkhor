@@ -14,6 +14,7 @@ internal sealed class MainForm : Form, IAukkhorUi
     private const uint ModControl = 0x2;
     private readonly AukkhorService service;
     private readonly ComboBox addresses = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 350 };
+    private readonly Label localIp = new() { AutoSize = true, Font = new Font("Segoe UI", 11, FontStyle.Bold) };
     private readonly Label pairing = new() { AutoSize = true, Font = new Font("Segoe UI", 18, FontStyle.Bold) };
     private readonly TextBox fingerprint = new() { Width = 500, ReadOnly = true };
     private readonly CheckBox share = new() { Text = "Allow iPhone to read Windows clipboard", AutoSize = true };
@@ -55,11 +56,21 @@ internal sealed class MainForm : Form, IAukkhorUi
         };
         Controls.Add(panel);
         panel.Controls.Add(Header("Aukkhor Windows", 20));
-        panel.Controls.Add(Header("Trusted LAN adapter", 10));
+        panel.Controls.Add(Header("Trusted Wi-Fi / Ethernet adapter", 10));
         panel.Controls.Add(addresses);
+        panel.Controls.Add(localIp);
+        addresses.SelectedIndexChanged += (_, _) => UpdateLocalIp();
         var refresh = new Button { Text = "Refresh adapters", AutoSize = true };
         refresh.Click += (_, _) => RefreshAdapters();
         panel.Controls.Add(refresh);
+        var copyIp = new Button { Text = "Copy PC IP", AutoSize = true };
+        copyIp.Click += (_, _) => {
+            if (addresses.SelectedItem is AddressChoice choice) {
+                Clipboard.SetText(choice.Address.ToString());
+                status.Text = "PC IP copied. Enter it under Windows companion on iPhone.";
+            }
+        };
+        panel.Controls.Add(copyIp);
         panel.Controls.Add(start);
         start.Click += async (_, _) => await StartReceiver();
         panel.Controls.Add(Header("Six-digit pairing code", 10));
@@ -144,14 +155,38 @@ internal sealed class MainForm : Form, IAukkhorUi
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnregisterHotKey(IntPtr hwnd, int id);
 
-    private void RefreshAdapters()
+    private void UpdateLocalIp()
     {
-        var selected = (addresses.SelectedItem as AddressChoice)?.Address.ToString() ?? previousHost;
+        if (addresses.SelectedItem is AddressChoice chosen) {
+            localIp.Text = "PC IP for iPhone: " + chosen.Address + "  (port " + AukkhorService.Port + ")";
+            if (!service.Running) status.Text = "Selected " + chosen.Adapter +
+                ". Start Windows companion to accept pairing.";
+        } else {
+            localIp.Text = "No physical LAN IPv4 address detected";
+            if (!service.Running) status.Text =
+                "Connect Windows to Wi-Fi or Ethernet, then refresh. " +
+                "VMware/VPN-only adapters cannot accept pairing from your iPhone.";
+        }
+    }
+
+    private void RefreshAdapters(bool restoreSaved = false)
+    {
+        var selected = restoreSaved ? previousHost :
+            (addresses.SelectedItem as AddressChoice)?.Address.ToString() ?? previousHost;
         addresses.Items.Clear();
-        foreach (var (address, name) in AukkhorService.Interfaces()) addresses.Items.Add(new AddressChoice(address, name));
+        foreach (var (address, name) in AukkhorService.Interfaces())
+            addresses.Items.Add(new AddressChoice(address, name));
         for (var i = 0; i < addresses.Items.Count; i++)
-            if (((AddressChoice)addresses.Items[i]!).Address.ToString() == selected) { addresses.SelectedIndex = i; break; }
-        if (addresses.SelectedIndex < 0 && addresses.Items.Count > 0) addresses.SelectedIndex = 0;
+            if (((AddressChoice)addresses.Items[i]!).Address.ToString() == selected) {
+                addresses.SelectedIndex = i;
+                break;
+            }
+        // If an old VMware/VMnet IP was saved, ignore it and use the preferred
+        // real LAN interface rather than automatically starting on a virtual NIC.
+        if (addresses.SelectedIndex < 0 && addresses.Items.Count > 0)
+            addresses.SelectedIndex = 0;
+        start.Enabled = !service.Running && addresses.SelectedItem is AddressChoice;
+        UpdateLocalIp();
     }
 
     private async Task StartReceiver()
@@ -164,6 +199,7 @@ internal sealed class MainForm : Form, IAukkhorUi
             await service.StartAsync(choice.Address);
             pairing.Text = service.PairCode;
             start.Text = "Running on " + choice.Address;
+            localIp.Text = "PC IP for iPhone: " + choice.Address + "  (port " + AukkhorService.Port + ")";
             addresses.Enabled = false;
             previousHost = choice.Address.ToString();
             SaveSettings();
@@ -281,7 +317,7 @@ internal sealed class MainForm : Form, IAukkhorUi
         catch (IOException) { }
         catch (JsonException) { }
         autoStart.Checked = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run")?.GetValue("Aukkhor") is not null;
-        RefreshAdapters();
+        RefreshAdapters(restoreSaved: true);
     }
 
     private void SaveSettings()
