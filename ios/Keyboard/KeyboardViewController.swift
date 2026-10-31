@@ -73,7 +73,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func loadView() {
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width,
-                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .default)
+                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .keyboard)
         root.allowsSelfSizing = true
         root.autoresizingMask = [.flexibleWidth]
         root.backgroundColor = .clear
@@ -186,6 +186,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             impact.prepare()
         }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // An extension is attached to a remote keyboard window after viewDidLoad.
+        // Recreate the material there rather than retaining a detached backdrop.
+        glassBackdrop.effect = nil
+        KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
     }
 
     override func viewWillLayoutSubviews() {

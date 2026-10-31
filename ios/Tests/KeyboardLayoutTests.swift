@@ -256,6 +256,76 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
+    func testAdaptiveGlassOverBlackInResponderWindow() async throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("Native glass needs iOS 26+") }
+        let defaults = AukkhorSettings.defaults
+        let savedClear = defaults.object(forKey: "keyboardClearGlass")
+        let savedPreset = KeyboardPreferences.preset
+        let savedStyle = KeyboardPreferences.keycapStyle
+        let savedNumbers = KeyboardPreferences.numberRow
+        defer {
+            if let savedClear { defaults.set(savedClear, forKey: "keyboardClearGlass") }
+            else { defaults.removeObject(forKey: "keyboardClearGlass") }
+            KeyboardPreferences.preset = savedPreset
+            KeyboardPreferences.keycapStyle = savedStyle
+            KeyboardPreferences.numberRow = savedNumbers
+        }
+        defaults.removeObject(forKey: "keyboardClearGlass")
+        XCTAssertFalse(KeyboardPreferences.clearGlass, "Existing unset preferences must use adaptive glass")
+        KeyboardPreferences.preset = .liquidGlass
+        KeyboardPreferences.keycapStyle = 2
+        KeyboardPreferences.numberRow = true
+        let keyboard = KeyboardViewController()
+        keyboard.isPreview = true
+        keyboard.loadViewIfNeeded()
+        let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
+        XCTAssertEqual(root.inputViewStyle, .keyboard, "Retain UIKit's native keyboard backdrop")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        host.view.backgroundColor = .black
+        host.overrideUserInterfaceStyle = .dark
+        let field = KeyboardHostField(frame: CGRect(x: 20, y: 100, width: 250, height: 44))
+        field.suppliedKeyboard = keyboard
+        field.keyboardAppearance = .dark
+        host.view.addSubview(field)
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { field.resignFirstResponder(); window.isHidden = true }
+        for appearance in 0..<2 {
+            XCTAssertTrue(field.becomeFirstResponder())
+            try await Task.sleep(for: .milliseconds(800))
+            keyboard.view.layoutIfNeeded()
+            XCTAssertNotNil(root.window)
+            let glass = try XCTUnwrap(root.subviews.flatMap { $0.subviews }
+                .first { $0.accessibilityIdentifier == "keyboard.canvasGlass" } as? UIVisualEffectView)
+            XCTAssertTrue(glass.effect is UIGlassEffect)
+            XCTAssertEqual(glass.alpha, 1)
+            let image = UIGraphicsImageRenderer(bounds: root.bounds).image { _ in
+                root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
+            }
+            let cg = try XCTUnwrap(image.cgImage)
+            let count = cg.width * cg.height
+            var pixels = [UInt8](repeating: 0, count: count * 4)
+            let context = try XCTUnwrap(CGContext(data: &pixels, width: cg.width, height: cg.height,
+                bitsPerComponent: 8, bytesPerRow: cg.width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(cg, in: CGRect(x: 0, y: 0, width: cg.width, height: cg.height))
+            let materialPixels = stride(from: 0, to: pixels.count, by: 4).filter {
+                let peak = max(pixels[$0], max(pixels[$0 + 1], pixels[$0 + 2]))
+                return peak > 8 && peak < 200
+            }.count
+            XCTAssertGreaterThan(materialPixels, count / 4,
+                "Adaptive material must render a visible surface over black, not just white labels")
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "hosted-adaptive-glass-black-\(appearance)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            field.resignFirstResponder()
+            try await Task.sleep(for: .milliseconds(300))
+        }
+    }
+
     func testSuggestionsReuseButtonsAndRejectStaleResults() async throws {
         let keyboard = KeyboardViewController()
         keyboard.isPreview = true

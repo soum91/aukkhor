@@ -317,9 +317,9 @@ struct AukkhorHome: View {
         if KeyboardPreferences.glassEnabled {
             Picker("Glass appearance", selection: Binding(
                 get: { KeyboardPreferences.clearGlass },
-                set: { KeyboardPreferences.clearGlass = $0 })) {
+                set: { KeyboardPreferences.clearGlass = $0; previewRevision = UUID() })) {
+                Text("Frosted (adaptive)").tag(false)
                 Text("Clear").tag(true)
-                Text("Frosted").tag(false)
             }
             VStack(alignment: .leading) {
                 Text("Glass tint: \(Int(KeyboardPreferences.glassTintStrength * 100))%")
@@ -331,7 +331,7 @@ struct AukkhorHome: View {
                 get: { KeyboardPreferences.interactiveGlass },
                 set: { KeyboardPreferences.interactiveGlass = $0 }))
         }
-        Text("Glass covers the keyboard surface even with Keycaps: None. Background and accent colors remain customizable. Native glass requires iOS 26 or later; older iOS uses blur. Reduce Transparency uses the solid theme background.")
+        Text("Glass covers the keyboard surface even with Keycaps: None. Frosted is recommended for plain or dark apps; Clear is best over a photo or colorful content. Available backdrop detail depends on the host app. Native glass requires iOS 26 or later; older iOS uses blur. Reduce Transparency uses the solid theme background.")
             .font(.caption).foregroundStyle(.secondary)
     }
 

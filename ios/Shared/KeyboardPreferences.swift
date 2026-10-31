@@ -82,7 +82,7 @@ enum KeyboardPreferences {
         if !enabled && preset == .liquidGlass { preset = .custom }
     }
     static var clearGlass: Bool {
-        get { data.object(forKey: "keyboardClearGlass") as? Bool ?? true }
+        get { data.object(forKey: "keyboardClearGlass") as? Bool ?? false }
         set { data.set(newValue, forKey: "keyboardClearGlass") }
     }
     static var glassTintStrength: CGFloat {
