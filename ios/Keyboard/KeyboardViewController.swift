@@ -266,6 +266,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         tools.spacing = 6
         tools.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(tools)
+        if oneHandSide != 1 { contentStack.addArrangedSubview(scroll) }
+        contentStack.addArrangedSubview(stack)
+        if oneHandSide == 1 { contentStack.addArrangedSubview(scroll) }
         NSLayoutConstraint.activate([
             tools.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
             tools.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
@@ -291,10 +294,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             button.heightAnchor.constraint(equalToConstant: 34).isActive = true
             tools.addArrangedSubview(button)
         }
-        // Spare strip is left of a right-handed keyboard, right of a left-handed one.
-        if oneHandSide != 1 { contentStack.addArrangedSubview(scroll) }
-        contentStack.addArrangedSubview(stack)
-        if oneHandSide == 1 { contentStack.addArrangedSubview(scroll) }
+
     }
 
     private func cycleOneHand() {
@@ -367,6 +367,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.keyHeight).isActive = true
         for (label, action) in bottomControls {
             let button = makeButton(label, action: action)
+            bottom.addArrangedSubview(button)
             if label == "Space" {
                 button.setTitle(mode == .english ? "space" : mode.label, for: .normal)
                 button.accessibilityLabel = "Space"
@@ -381,7 +382,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 button.titleLabel?.font = .systemFont(ofSize: label == "😊" ? 23 : 15)
                 KeyboardKeyAppearance.apply(to: button, palette: palette, secondary: true)
             }
-            bottom.addArrangedSubview(button)
         }
         stack.addArrangedSubview(oneHandRow(bottom))
         let footer = row([
