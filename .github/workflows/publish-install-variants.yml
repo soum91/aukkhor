@@ -1,6 +1,11 @@
 name: Publish all Aukkhor diagnostic IPAs to FlareStore
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows:
+      - Aukkhor iOS unsigned build
+    types:
+      - completed
   push:
     paths:
       - 'scripts/publish_install_variants.py'
@@ -13,6 +18,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
