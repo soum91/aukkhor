@@ -81,6 +81,27 @@ def main():
                          and a.get("bundleIdentifier") == "dev.soum91.aukkhor"), None)
         if not main_app:
             raise SystemExit(f"Primary Aukkhor entry missing in {file_name}")
+        # The primary app MUST advance alongside the diagnostic entries.
+        # Previously it was left pointing at 0.2.0.13, so FlareStore kept
+        # offering the broken Share extension despite publishing newer IPAs.
+        main_ipa = "Aukkhor-unsigned.ipa"
+        main_note = (
+            "Full Aukkhor keyboard with English and Bangla input, Windows and "
+            "Android TV companions, and Share extension. Unsigned IPA: "
+            "FlareStore must sign the app and both embedded extensions."
+        )
+        current = list(main_app.get("versions", []))
+        main_app["versions"] = [{
+            "version": version,
+            "buildVersion": str(args.build),
+            "date": date.today().isoformat(),
+            "localizedDescription": main_note,
+            "changelog": "Rebuilt app and extensions with validated CFBundleDisplayName metadata.",
+            "downloadURL": f"{prefix}/{main_ipa}",
+            "size": (args.directory / main_ipa).stat().st_size,
+            "minOSVersion": "16.0",
+        }] + [old for old in current if old.get("version") != version][:5]
+        main_app["subtitle"] = "Aukkhor keyboard and companions · " + version
         icon = main_app["iconURL"]
         new_entries = []
         for name, ipa_name, explanation in VARIANTS:
@@ -115,7 +136,7 @@ def main():
             if app is not main_app and not app.get("diagnostic", False)
         ])
         path.write_text(json.dumps(feed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"Aukkhor {version}: four entries available, mode={args.mode}")
+    print(f"Aukkhor {version}: primary and three diagnostic entries updated, mode={args.mode}")
 
 
 if __name__ == "__main__":
