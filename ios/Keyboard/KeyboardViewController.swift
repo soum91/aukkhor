@@ -16,6 +16,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastSpaceTap = Date.distantPast
     private var symbols = false
     private var nativeSigns = false
+    private var oneHandSide = 0 // 0 full, 1 left, 2 right
     private var emojiMode = false
     private var emojiSearch = false
     private var emojiQuery = ""
@@ -32,6 +33,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var renderedBuffer = ""
     private let speech = AVSpeechSynthesizer()
     private let backgroundImageView = UIImageView()
+    private let glassBackdrop = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let stack = UIStackView()
     private let suggestions = UIStackView()
     private let banner = UILabel()
@@ -47,6 +49,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         backgroundImageView.clipsToBounds = true
         backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(backgroundImageView)
+        glassBackdrop.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(glassBackdrop)
+        NSLayoutConstraint.activate([
+            glassBackdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            glassBackdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            glassBackdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            glassBackdrop.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
         NSLayoutConstraint.activate([
             backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -177,9 +187,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func addChars(_ chars: [String]) {
-        stack.addArrangedSubview(row(chars.map { letter in
+        stack.addArrangedSubview(oneHandRow(row(chars.map { letter in
             (letter, { [weak self] in self?.type(letter) })
-        }))
+        })))
+    }
+
+    private func oneHandRow(_ keys: UIStackView) -> UIView {
+        guard oneHandSide != 0 else { return keys }
+        let container = UIStackView()
+        container.axis = .horizontal
+        container.spacing = 0
+        let spacer = UIView()
+        spacer.widthAnchor.constraint(equalToConstant: 66).isActive = true
+        if oneHandSide == 2 { container.addArrangedSubview(spacer) }
+        container.addArrangedSubview(keys)
+        if oneHandSide == 1 { container.addArrangedSubview(spacer) }
+        return container
+    }
+
+    private func cycleOneHand() {
+        oneHandSide = (oneHandSide + 1) % 3
+        buildKeys()
     }
 
     private func toolbar() -> UIScrollView {
@@ -202,6 +230,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let controls: [(String, () -> Void)] = [
             (mode.label, { [weak self] in self?.cycleMode() }),
             ("😊", { [weak self] in self?.toggleEmoji() }),
+            ("↔", { [weak self] in self?.cycleOneHand() }),
             ("📋", { [weak self] in self?.toggleClipboardPanel() }),
             ("🎨", { [weak self] in self?.cycleTheme() }),
             ("Paste", { [weak self] in self?.paste() }),
@@ -223,6 +252,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func buildKeys() {
         view.backgroundColor = palette.background
+        glassBackdrop.isHidden = KeyboardPreferences.preset != .liquidGlass
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         hasPhotoBackground = backgroundImageView.image != nil
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
@@ -264,6 +294,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 if self.mode == .bangla { self.nativeSigns.toggle() } else { self.tapShift() }
                 self.buildKeys()
             }),
+            ("😊", { [weak self] in self?.toggleEmoji() }),
             ("Space", { [weak self] in self?.type(" ") }),
             ("⌫", { [weak self] in self?.backspace() }),
             ("↵", { [weak self] in self?.type("\n") })
@@ -283,11 +314,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 button.addGestureRecognizer(gesture)
             } else {
                 button.widthAnchor.constraint(equalToConstant: label.count > 2 ? 51 : 43).isActive = true
-                button.backgroundColor = palette.secondaryKey
+                if KeyboardPreferences.keycapStyle != 2 {
+                    button.backgroundColor = KeyboardPreferences.preset == .liquidGlass
+                        ? palette.secondaryKey.withAlphaComponent(0.55) : palette.secondaryKey
+                }
             }
             bottom.addArrangedSubview(button)
         }
-        stack.addArrangedSubview(bottom)
+        stack.addArrangedSubview(oneHandRow(bottom))
         banner.font = .systemFont(ofSize: 11)
         banner.textAlignment = .center
         banner.textColor = palette.muted
@@ -473,7 +507,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         for candidate in candidates where !candidate.isEmpty {
             let button = makeButton(candidate, action: { [weak self] in self?.applySuggestion(candidate) })
             button.titleLabel?.font = .systemFont(ofSize: 15)
-            button.backgroundColor = palette.secondaryKey
+            if KeyboardPreferences.keycapStyle != 2 { button.backgroundColor = palette.secondaryKey }
             suggestions.addArrangedSubview(button)
         }
     }
