@@ -195,7 +195,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let englishLetters = !symbols && mode != .bangla &&
             chars.allSatisfy { $0.count == 1 && $0.first?.isLetter == true }
         if englishLetters && chars.count == 9 {
-            keys.isLayoutMarginsRelativeArrangement = true
             // Half one key pitch at either side, scales with portrait/landscape/one-hand width.
             let wrapper = UIView()
             keys.translatesAutoresizingMaskIntoConstraints = false
@@ -384,6 +383,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self.settingsPanel.toggle(); self.buildKeys()
             })
         ])
+        for case let button as UIButton in footer.arrangedSubviews {
+            button.backgroundColor = .clear
+            button.layer.borderWidth = 0
+            button.layer.shadowOpacity = 0
+            button.subviews.filter { $0.tag == 9401 }.forEach { $0.removeFromSuperview() }
+        }
         if let globe = footer.arrangedSubviews.first as? UIButton {
             globe.removeAction(identifiedBy: UIAction.Identifier("aukkhor.tap"), for: .touchUpInside)
             // Keep Apple's keyboard-switcher menu, including long-press behavior.
