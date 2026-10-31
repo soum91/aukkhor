@@ -31,10 +31,10 @@ jobs:
           xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
           APP="$RUNNER_TEMP/AukkhorDerived/Build/Products/Release-iphoneos/Aukkhor.app"
           test -d "$APP/PlugIns/AukkhorKeyboard.appex"
-          test -d "$APP/PlugIns/AukkhorShare.appex"
+          test ! -d "$APP/PlugIns/AukkhorShare.appex"
           test -s "$APP/Assets.car"
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist" | grep -Fx com.apple.keyboard-service
-          for plist in "$APP/Info.plist" "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist" "$APP/PlugIns/AukkhorShare.appex/Info.plist"; do
+          for plist in "$APP/Info.plist" "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist"; do
             display_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist")
             test -n "$display_name" || { echo "::error::Missing CFBundleDisplayName in $plist"; exit 1; }
             echo "$plist: $display_name"
@@ -48,99 +48,30 @@ jobs:
           APP="$RUNNER_TEMP/AukkhorDerived/Build/Products/Release-iphoneos/Aukkhor.app"
           xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
           xcrun lipo -archs "$APP/PlugIns/AukkhorKeyboard.appex/AukkhorKeyboard" | grep -w arm64
-          xcrun lipo -archs "$APP/PlugIns/AukkhorShare.appex/AukkhorShare" | grep -w arm64
           /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP/Info.plist" | grep -Fx iPhoneOS
-      - name: Generate compatibility project without optional entitlements
-        run: |
-          python3 scripts/make_compat_spec.py
-          (cd ios && xcodegen generate --spec project-compat.yml)
-      - name: Build compatibility IPA with keyboard and Share extension
-        run: |
-          set -euo pipefail
-          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorCompatDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
-          APP="$RUNNER_TEMP/AukkhorCompatDerived/Build/Products/Release-iphoneos/Aukkhor.app"
-          test -d "$APP/PlugIns/AukkhorKeyboard.appex"
-          test -d "$APP/PlugIns/AukkhorShare.appex"
-          test -s "$APP/Assets.car"
-          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
-          mkdir -p "$RUNNER_TEMP/AukkhorCompatPackage/Payload"
-          cp -R "$APP" "$RUNNER_TEMP/AukkhorCompatPackage/Payload/"
-          (cd "$RUNNER_TEMP/AukkhorCompatPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-compat-unsigned.ipa" Payload)
-      - name: Generate installation isolation specs
-        run: |
-          python3 scripts/make_install_specs.py
-      - name: Build keyboard-only IPA without Share extension
-        run: |
-          set -euo pipefail
-          (cd ios && xcodegen generate --spec project-keyboard-only.yml)
-          xcodebuild -quiet -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorKeyboardOnlyDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
-          APP="$RUNNER_TEMP/AukkhorKeyboardOnlyDerived/Build/Products/Release-iphoneos/Aukkhor.app"
-          test -d "$APP/PlugIns/AukkhorKeyboard.appex"
-          test ! -d "$APP/PlugIns/AukkhorShare.appex"
-          test -s "$APP/Assets.car"
-          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
-          mkdir -p "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage/Payload"
-          cp -R "$APP" "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage/Payload/"
-          (cd "$RUNNER_TEMP/AukkhorKeyboardOnlyPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-keyboard-only-unsigned.ipa" Payload)
-      - name: Build independent standalone installation probe
-        run: |
-          set -euo pipefail
-          (cd ios && xcodegen generate --spec project-standalone-probe.yml)
-          xcodebuild -quiet -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorProbeDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
-          APP="$RUNNER_TEMP/AukkhorProbeDerived/Build/Products/Release-iphoneos/Aukkhor.app"
-          test -d "$APP"
-          test -z "$(find "$APP/PlugIns" -maxdepth 1 -name "*.appex" -print 2>/dev/null || true)"
-          test -s "$APP/Assets.car"
-          xcrun lipo -archs "$APP/Aukkhor" | grep -w arm64
-          /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" | grep -Fx dev.soum91.aukkhor.probe
-          mkdir -p "$RUNNER_TEMP/AukkhorStandaloneProbe/Payload"
-          cp -R "$APP" "$RUNNER_TEMP/AukkhorStandaloneProbe/Payload/"
-          (cd "$RUNNER_TEMP/AukkhorStandaloneProbe" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-standalone-probe-unsigned.ipa" Payload)
-      - name: Audit package structure before publishing
+      - name: Audit keyboard-only IPA before publishing
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import zipfile
-          targets = {
-              'Aukkhor-unsigned.ipa': 2,
-              'Aukkhor-compat-unsigned.ipa': 2,
-              'Aukkhor-keyboard-only-unsigned.ipa': 1,
-              'Aukkhor-standalone-probe-unsigned.ipa': 0,
-          }
-          for filename, expected in targets.items():
-              with zipfile.ZipFile(filename) as ipa:
-                  names = ipa.namelist()
-                  extensions = {p.split('/')[3] for p in names if p.startswith('Payload/Aukkhor.app/PlugIns/') and p.count('/') > 3}
-                  assert len(extensions) == expected, (filename, extensions, expected)
-                  assert 'Payload/Aukkhor.app/Info.plist' in names
-                  assert 'Payload/Aukkhor.app/Aukkhor' in names
-                  import plistlib
-                  plists = ['Payload/Aukkhor.app/Info.plist']
-                  plists += [p for p in names if p.endswith('.appex/Info.plist')]
-                  for plist in plists:
-                      info = plistlib.loads(ipa.read(plist))
-                      assert isinstance(info.get('CFBundleDisplayName'), str) and info['CFBundleDisplayName'].strip(), (filename, plist, 'missing display name')
-                  print(filename, 'extensions:', ', '.join(sorted(extensions)) or 'none')
+          import plistlib, zipfile
+          with zipfile.ZipFile('Aukkhor-unsigned.ipa') as ipa:
+              names=set(ipa.namelist())
+              host='Payload/Aukkhor.app/Info.plist'
+              keyboard='Payload/Aukkhor.app/PlugIns/AukkhorKeyboard.appex/Info.plist'
+              assert host in names and keyboard in names, 'Host or keyboard Info.plist missing'
+              assert not any('/AukkhorShare.appex/' in n for n in names), 'Share extension must be absent'
+              root=plistlib.loads(ipa.read(host))
+              ext=plistlib.loads(ipa.read(keyboard))
+              assert root['CFBundleIdentifier']=='dev.soum91.aukkhor'
+              assert ext['CFBundleIdentifier']=='dev.soum91.aukkhor.keyboard'
+              assert ext['NSExtension']['NSExtensionPointIdentifier']=='com.apple.keyboard-service'
+              for name, info in [(host,root),(keyboard,ext)]:
+                  assert str(info.get('CFBundleDisplayName','')).strip(), name
+              print('Validated exactly one embedded keyboard extension')
           PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Aukkhor-iOS-keyboard-only-${{ github.run_number }}
-          path: Aukkhor-keyboard-only-unsigned.ipa
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Aukkhor-iOS-standalone-probe-${{ github.run_number }}
-          path: Aukkhor-standalone-probe-unsigned.ipa
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Aukkhor-iOS-compat-${{ github.run_number }}
-          path: Aukkhor-compat-unsigned.ipa
-          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
           name: Aukkhor-iOS-unsigned-${{ github.run_number }}
           path: Aukkhor-unsigned.ipa
           if-no-files-found: error
-
