@@ -95,7 +95,7 @@ def main():
     alternate_feed["sourceURL"] = "https://raw.githubusercontent.com/soum91/aukkhor/main/aukkhor-keyboard-v17.json"
     alternate_feed["subtitle"] = "Aukkhor keyboard releases"
     alternate_feed["description"] = "Aukkhor iPhone keyboard, host and keyboard extension only. Continuously updated feed."
-    alternate.write_text(json.dumps(alternate_feed, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+    alternate.write_text(json.dumps(alternate_feed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"Published one Aukkhor {version} entry; no probe or diagnostic listings")
 
 if __name__ == "__main__":
