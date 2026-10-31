@@ -16,7 +16,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastSpaceTap = Date.distantPast
     private var symbols = false
     private var nativeSigns = false
-    private var oneHandSide = 0 // 0 full, 1 left, 2 right
+    private var oneHandSide = KeyboardPreferences.oneHandSide // 0 full, 1 left, 2 right
+    private var settingsPanel = false
     private var emojiMode = false
     private var emojiSearch = false
     private var emojiQuery = ""
@@ -35,6 +36,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let backgroundImageView = UIImageView()
     private let glassBackdrop = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let stack = UIStackView()
+    private let contentStack = UIStackView()
+    private var toolsExpanded = false
     private let suggestions = UIStackView()
     private let banner = UILabel()
     private var palette: KeyboardPalette {
@@ -64,16 +67,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         stack.axis = .vertical
-        stack.spacing = 4
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        stack.spacing = 7
+        contentStack.axis = .horizontal
+        contentStack.spacing = 6
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(contentStack)
         suggestions.heightAnchor.constraint(greaterThanOrEqualToConstant: 29).isActive = true
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
-            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
-            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 290)
+            contentStack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            contentStack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            contentStack.topAnchor.constraint(equalTo: view.topAnchor, constant: 5),
+            contentStack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -5),
+            view.heightAnchor.constraint(greaterThanOrEqualToConstant: 260)
         ])
         let glide = UIPanGestureRecognizer(target: self, action: #selector(handleGlide(_:)))
         glide.cancelsTouchesInView = true
@@ -86,6 +91,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self?.refreshSuggestions()
             }
         }
+        buildKeys()
+    }
+
+    func reloadAppearance() {
+        guard isViewLoaded else { return }
+        oneHandSide = KeyboardPreferences.oneHandSide
         buildKeys()
     }
 
@@ -155,24 +166,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             foreground: UIColor = .label, weight: CGFloat = 1) -> UIButton {
         let button = UIButton(type: .system)
         button.setTitle(title, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: title.count > 3 ? 13 : 19, weight: .medium)
+        button.titleLabel?.font = .systemFont(ofSize: title.count > 3 ? 14 : 23, weight: .regular)
         button.setTitleColor(foreground == .label ? palette.foreground : foreground, for: .normal)
-        let glass = KeyboardPreferences.preset == .liquidGlass
-        let style = KeyboardPreferences.keycapStyle
-        button.backgroundColor = style == 2 ? .clear : (glass ? palette.key.withAlphaComponent(0.66) : (hasPhotoBackground ? palette.key.withAlphaComponent(0.79) : palette.key))
-        button.layer.cornerRadius = glass ? max(13, KeyboardPreferences.cornerRadius) : KeyboardPreferences.cornerRadius
-        button.layer.borderWidth = style == 0 ? (glass ? 0.8 : 0.4) : 0
-        button.layer.borderColor = palette.border.cgColor
-        if glass && style != 2 {
-            button.layer.shadowColor = UIColor.white.cgColor
-            button.layer.shadowOpacity = 0.12
-            button.layer.shadowRadius = 3
-            button.layer.shadowOffset = CGSize(width: 0, height: 1)
-        }
+        KeyboardKeyAppearance.apply(to: button, palette: palette)
         button.accessibilityLabel = title
-        button.addAction(UIAction { [weak self] _ in self?.feedback(); action() }, for: .touchUpInside)
+        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in self?.feedback(); action() }, for: .touchUpInside)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        button.widthAnchor.constraint(greaterThanOrEqualToConstant: weight * 20).isActive = true
+
         return button
     }
 
@@ -180,9 +180,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let row = UIStackView()
         row.axis = .horizontal
         row.distribution = .fillEqually
-        row.spacing = 3
+        row.spacing = KeyboardPreferences.keySpacing
         for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1)) }
-        row.heightAnchor.constraint(greaterThanOrEqualToConstant: 41).isActive = true
+        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.keyHeight).isActive = true
         return row
     }
 
@@ -194,51 +194,66 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Insets belong outside the key row so every key retains equal touch width.
         let englishLetters = !symbols && mode != .bangla &&
             chars.allSatisfy { $0.count == 1 && $0.first?.isLetter == true }
-        let inset: CGFloat = englishLetters && chars.count == 9 ? 18 :
-            (englishLetters && chars.count == 7 ? 42 : 0)
-        if inset > 0 {
-            let wrapper = UIStackView()
-            wrapper.axis = .horizontal
-            wrapper.spacing = 0
-            let left = UIView()
-            let right = UIView()
-            left.widthAnchor.constraint(equalToConstant: inset).isActive = true
-            right.widthAnchor.constraint(equalToConstant: inset).isActive = true
-            wrapper.addArrangedSubview(left)
-            wrapper.addArrangedSubview(keys)
-            wrapper.addArrangedSubview(right)
+        if englishLetters && chars.count == 9 {
+            keys.isLayoutMarginsRelativeArrangement = true
+            // Half one key pitch at either side, scales with portrait/landscape/one-hand width.
+            let wrapper = UIView()
+            keys.translatesAutoresizingMaskIntoConstraints = false
+            wrapper.addSubview(keys)
+            NSLayoutConstraint.activate([
+                keys.centerXAnchor.constraint(equalTo: wrapper.centerXAnchor),
+                keys.widthAnchor.constraint(equalTo: wrapper.widthAnchor, multiplier: 0.9,
+                                            constant: -KeyboardPreferences.keySpacing * 0.1),
+                keys.topAnchor.constraint(equalTo: wrapper.topAnchor),
+                keys.bottomAnchor.constraint(equalTo: wrapper.bottomAnchor)
+            ])
             stack.addArrangedSubview(oneHandRow(wrapper))
         } else {
             stack.addArrangedSubview(oneHandRow(keys))
         }
     }
 
-    private func oneHandRow(_ keys: UIStackView) -> UIView {
-        guard oneHandSide != 0 else { return keys }
+    private func addThirdRow(_ chars: [String]) {
         let container = UIStackView()
-        container.axis = .horizontal
         container.spacing = 0
-        let spacer = UIView()
-        spacer.widthAnchor.constraint(equalToConstant: 66).isActive = true
-        if oneHandSide == 2 { container.addArrangedSubview(spacer) }
-        container.addArrangedSubview(keys)
-        if oneHandSide == 1 { container.addArrangedSubview(spacer) }
-        return container
+        let shiftKey = makeButton(capsLock ? "⇪" : "⇧", action: { [weak self] in
+            self?.tapShift(); self?.buildKeys()
+        })
+        shiftKey.accessibilityLabel = "Shift"
+        let deleteKey = makeButton("⌫", action: { [weak self] in self?.backspace() })
+        deleteKey.accessibilityLabel = "Delete"
+        let letters = row(chars.map { letter in (letter, { [weak self] in self?.type(letter) }) })
+        let leftGap = UIView(), rightGap = UIView()
+        container.addArrangedSubview(shiftKey)
+        container.addArrangedSubview(leftGap)
+        container.addArrangedSubview(letters)
+        container.addArrangedSubview(rightGap)
+        container.addArrangedSubview(deleteKey)
+        NSLayoutConstraint.activate([
+            shiftKey.widthAnchor.constraint(equalTo: container.widthAnchor, multiplier: 0.12),
+            deleteKey.widthAnchor.constraint(equalTo: shiftKey.widthAnchor),
+            letters.widthAnchor.constraint(equalTo: container.widthAnchor, multiplier: 0.7,
+                                           constant: -KeyboardPreferences.keySpacing * 0.3),
+            leftGap.widthAnchor.constraint(equalTo: rightGap.widthAnchor)
+        ])
+        KeyboardKeyAppearance.apply(to: shiftKey, palette: palette, secondary: true)
+        KeyboardKeyAppearance.apply(to: deleteKey, palette: palette, secondary: true)
+        stack.addArrangedSubview(oneHandRow(container))
     }
 
-    private func cycleOneHand() {
-        oneHandSide = (oneHandSide + 1) % 3
-        buildKeys()
-    }
+    private func oneHandRow(_ keys: UIView) -> UIView { keys }
 
-    private func toolbar() -> UIScrollView {
+    private func configureToolsRail() {
+        contentStack.arrangedSubviews.forEach { contentStack.removeArrangedSubview($0); $0.removeFromSuperview() }
+        guard oneHandSide != 0 || toolsExpanded else {
+            contentStack.addArrangedSubview(stack)
+            return
+        }
         let scroll = UIScrollView()
-        scroll.showsHorizontalScrollIndicator = false
-        scroll.alwaysBounceHorizontal = true
-        scroll.heightAnchor.constraint(equalToConstant: 38).isActive = true
+        scroll.showsVerticalScrollIndicator = false
         let tools = UIStackView()
-        tools.axis = .horizontal
-        tools.spacing = 4
+        tools.axis = .vertical
+        tools.spacing = 6
         tools.translatesAutoresizingMaskIntoConstraints = false
         scroll.addSubview(tools)
         NSLayoutConstraint.activate([
@@ -246,43 +261,53 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             tools.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
             tools.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
             tools.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            tools.heightAnchor.constraint(equalTo: scroll.frameLayoutGuide.heightAnchor)
+            tools.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor),
+            scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            (mode.label, { [weak self] in self?.cycleMode() }),
-            ("😊", { [weak self] in self?.toggleEmoji() }),
-            ("↔", { [weak self] in self?.cycleOneHand() }),
-            ("📋", { [weak self] in self?.toggleClipboardPanel() }),
-            ("🎨", { [weak self] in self?.cycleTheme() }),
+            ("⚙", { [weak self] in self?.settingsPanel.toggle(); self?.buildKeys() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
             ("Speak", { [weak self] in self?.speak() }),
+            ("📋", { [weak self] in self?.toggleClipboardPanel() }),
             ("⇥PC", { [weak self] in self?.sendClipboardToPC() }),
-            ("PC⇤", { [weak self] in self?.getClipboardFromPC() })
+            ("PC⇤", { [weak self] in self?.getClipboardFromPC() }),
+            ("↔", { [weak self] in self?.oneHandSide = 0; KeyboardPreferences.oneHandSide = 0; self?.toolsExpanded = false; self?.buildKeys() })
         ]
-        for (name, action) in controls {
-            let button = makeButton(name, action: action)
-            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .semibold)
-            button.widthAnchor.constraint(equalToConstant: name.count > 4 ? 65 : 50).isActive = true
-            if KeyboardPreferences.keycapStyle != 2 { button.backgroundColor = KeyboardPreferences.preset == .liquidGlass ? palette.secondaryKey.withAlphaComponent(0.65) : palette.secondaryKey }
+        for (title, action) in controls {
+            let button = makeButton(title, action: action)
+            button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 11 : 20)
+            button.heightAnchor.constraint(equalToConstant: 34).isActive = true
             tools.addArrangedSubview(button)
         }
-        return scroll
+        // Spare strip is left of a right-handed keyboard, right of a left-handed one.
+        if oneHandSide != 1 { contentStack.addArrangedSubview(scroll) }
+        contentStack.addArrangedSubview(stack)
+        if oneHandSide == 1 { contentStack.addArrangedSubview(scroll) }
+    }
+
+    private func cycleOneHand() {
+        oneHandSide = (oneHandSide + 1) % 3
+        KeyboardPreferences.oneHandSide = oneHandSide
+        buildKeys()
     }
 
     private func buildKeys() {
         view.backgroundColor = palette.background
-        glassBackdrop.isHidden = KeyboardPreferences.preset != .liquidGlass
+        glassBackdrop.isHidden = !(KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass)
+        glassBackdrop.effect = UIBlurEffect(style: .systemUltraThinMaterial)
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         hasPhotoBackground = backgroundImageView.image != nil
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
-        stack.addArrangedSubview(toolbar())
+        configureToolsRail()
         suggestions.axis = .horizontal
         suggestions.distribution = .fillEqually
         suggestions.spacing = 4
         stack.addArrangedSubview(suggestions)
-        if clipboardPanel {
+        if settingsPanel {
+            buildAppearancePanel()
+        } else if clipboardPanel {
             buildClipboardPanel()
         } else if emojiMode {
             buildEmojiPanel()
@@ -303,52 +328,135 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
         } else {
             if KeyboardPreferences.numberRow { addChars(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]) }
-            for line in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
+            for line in ["qwertyuiop", "asdfghjkl"] {
                 addChars(line.map { String(shift ? $0.uppercased() : String($0)) })
             }
+            addThirdRow("zxcvbnm".map { shift ? $0.uppercased() : String($0) })
         }
-        let bottomControls: [(String, () -> Void)] = [
-            ("🌐", { [weak self] in self?.commitBuffer(); self?.advanceToNextInputMode() }),
-            (symbols ? "ABC" : "?123", { [weak self] in self?.commitBuffer(); self?.symbols.toggle(); self?.buildKeys() }),
-            (mode == .bangla ? (nativeSigns ? "ব্যঞ্জন" : "স্বর") : "⇧", { [weak self] in
-                guard let self else { return }
-                if self.mode == .bangla { self.nativeSigns.toggle() } else { self.tapShift() }
-                self.buildKeys()
+        let needsEditingKeys = symbols || mode == .bangla || emojiMode || clipboardPanel || settingsPanel
+        var bottomControls: [(String, () -> Void)] = [
+            (symbols ? "ABC" : "123", { [weak self] in
+                self?.commitBuffer(); self?.symbols.toggle(); self?.emojiMode = false
+                self?.clipboardPanel = false; self?.settingsPanel = false; self?.buildKeys()
             }),
             ("😊", { [weak self] in self?.toggleEmoji() }),
             ("Space", { [weak self] in self?.type(" ") }),
-            ("⌫", { [weak self] in self?.backspace() }),
-            ("↵", { [weak self] in self?.type("\n") })
+            ("return", { [weak self] in self?.type("\n") })
         ]
+        if needsEditingKeys {
+            bottomControls.insert(("⌫", { [weak self] in self?.backspace() }), at: 3)
+        }
+        if mode == .bangla && !emojiMode && !clipboardPanel && !settingsPanel {
+            bottomControls.insert((nativeSigns ? "ব্যঞ্জন" : "স্বর", { [weak self] in
+                self?.nativeSigns.toggle(); self?.buildKeys()
+            }), at: 1)
+        }
         let bottom = UIStackView()
         bottom.axis = .horizontal
-        bottom.spacing = 3
-        bottom.distribution = .fill
-        bottom.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
+        bottom.spacing = KeyboardPreferences.keySpacing
+        bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.keyHeight).isActive = true
         for (label, action) in bottomControls {
             let button = makeButton(label, action: action)
             if label == "Space" {
+                button.setTitle(mode == .english ? "space" : mode.label, for: .normal)
+                button.accessibilityLabel = "Space"
+                button.titleLabel?.font = .systemFont(ofSize: 16)
                 button.setContentHuggingPriority(.defaultLow, for: .horizontal)
-                button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
                 let gesture = UILongPressGestureRecognizer(target: self, action: #selector(moveCaret(_:)))
                 gesture.minimumPressDuration = 0.35
                 button.addGestureRecognizer(gesture)
             } else {
-                button.widthAnchor.constraint(equalToConstant: label.count > 2 ? 51 : 43).isActive = true
-                if KeyboardPreferences.keycapStyle != 2 {
-                    button.backgroundColor = KeyboardPreferences.preset == .liquidGlass
-                        ? palette.secondaryKey.withAlphaComponent(0.55) : palette.secondaryKey
-                }
+                button.widthAnchor.constraint(equalTo: bottom.widthAnchor,
+                    multiplier: label == "return" ? 0.24 : 0.12).isActive = true
+                button.titleLabel?.font = .systemFont(ofSize: label == "😊" ? 23 : 15)
+                KeyboardKeyAppearance.apply(to: button, palette: palette, secondary: true)
             }
             bottom.addArrangedSubview(button)
         }
         stack.addArrangedSubview(oneHandRow(bottom))
+        let footer = row([
+            ("🌐", { [weak self] in self?.commitBuffer(); self?.advanceToNextInputMode() }),
+            (mode.label, { [weak self] in self?.cycleMode() }),
+            ("↔", { [weak self] in self?.cycleOneHand() }),
+            ("⚙", { [weak self] in
+                guard let self else { return }
+                if self.oneHandSide == 0 { self.toolsExpanded.toggle() }
+                self.settingsPanel.toggle(); self.buildKeys()
+            })
+        ])
+        if let globe = footer.arrangedSubviews.first as? UIButton {
+            globe.removeAction(identifiedBy: UIAction.Identifier("aukkhor.tap"), for: .touchUpInside)
+            // Keep Apple's keyboard-switcher menu, including long-press behavior.
+            globe.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        }
+        if let hand = footer.arrangedSubviews.dropFirst(2).first as? UIButton {
+            hand.menu = UIMenu(title: "One-handed layout", children: [("Left", 1), ("Full width", 0), ("Right", 2)].map { title, side in
+                UIAction(title: title, state: oneHandSide == side ? .on : .off) { [weak self] _ in
+                    self?.oneHandSide = side; KeyboardPreferences.oneHandSide = side; self?.buildKeys()
+                }
+            })
+            hand.showsMenuAsPrimaryAction = true
+            hand.accessibilityLabel = "One-handed layout"
+        }
+        stack.addArrangedSubview(footer)
         banner.font = .systemFont(ofSize: 11)
         banner.textAlignment = .center
         banner.textColor = palette.muted
-        banner.text = "Hold Space to move cursor • theme and tools above"
+        banner.text = nil
+        banner.isHidden = true
         stack.addArrangedSubview(banner)
         refreshSuggestions()
+    }
+
+    private func colorControl(_ title: String, set: @escaping (String) -> Void) -> UIButton {
+        let button = makeButton(title, action: {})
+        button.titleLabel?.font = .systemFont(ofSize: 12)
+        let colors = [("Black", "#000000"), ("White", "#FFFFFF"), ("Graphite", "#35363C"),
+                      ("Blue", "#2155CD"), ("Purple", "#714AC4"), ("Pink", "#E783AA"),
+                      ("Mint", "#79C6AD"), ("Gold", "#E3BE62")]
+        button.menu = UIMenu(title: title, children: colors.map { name, hex in
+            UIAction(title: name) { [weak self] _ in
+                set(hex); KeyboardPreferences.preset = .custom; self?.buildKeys()
+            }
+        })
+        button.showsMenuAsPrimaryAction = true
+        return button
+    }
+
+    private func buildAppearancePanel() {
+        stack.addArrangedSubview(row([
+            ("Theme: " + KeyboardPreferences.preset.title, { [weak self] in self?.cycleTheme() }),
+            ("Done", { [weak self] in self?.settingsPanel = false; self?.buildKeys() })
+        ]))
+        stack.addArrangedSubview(row([
+            (["Keycaps: Normal", "Keycaps: Borderless", "Keycaps: None"][KeyboardPreferences.keycapStyle], { [weak self] in
+                KeyboardPreferences.keycapStyle = (KeyboardPreferences.keycapStyle + 1) % 3
+                self?.buildKeys()
+            }),
+            (KeyboardPreferences.numberRow ? "Numbers: On" : "Numbers: Off", { [weak self] in
+                KeyboardPreferences.numberRow.toggle(); self?.buildKeys()
+            })
+        ]))
+        stack.addArrangedSubview(row([
+            ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
+            ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
+            ("Glass", { [weak self] in KeyboardPreferences.usesGlass.toggle(); self?.buildKeys() })
+        ]))
+        stack.addArrangedSubview(row([
+            ("Opacity −", { [weak self] in KeyboardPreferences.keyOpacity -= 0.1; self?.buildKeys() }),
+            ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
+        ]))
+        let colors = UIStackView(arrangedSubviews: [
+            colorControl("Background", set: { KeyboardPreferences.customBackground = $0 }),
+            colorControl("Keys", set: { KeyboardPreferences.customKey = $0 }),
+            colorControl("Actions", set: { KeyboardPreferences.customSecondaryKey = $0 }),
+            colorControl("Text", set: { KeyboardPreferences.customForeground = $0 })
+        ])
+        colors.distribution = .fillEqually
+        colors.spacing = 4
+        colors.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        stack.addArrangedSubview(colors)
+
     }
 
     private func tapShift() {
@@ -374,6 +482,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func toggleEmoji() {
         commitBuffer()
+        settingsPanel = false
         emojiMode.toggle()
         clipboardPanel = false
         emojiSearch = false; emojiQuery = ""
@@ -528,7 +637,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         for candidate in candidates where !candidate.isEmpty {
             let button = makeButton(candidate, action: { [weak self] in self?.applySuggestion(candidate) })
             button.titleLabel?.font = .systemFont(ofSize: 15)
-            if KeyboardPreferences.keycapStyle != 2 { button.backgroundColor = palette.secondaryKey }
+            KeyboardKeyAppearance.apply(to: button, palette: palette, secondary: true)
             suggestions.addArrangedSubview(button)
         }
     }
@@ -697,6 +806,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func show(_ message: String) {
+        banner.isHidden = false
         banner.text = message
         banner.accessibilityLabel = message
     }

@@ -1,8 +1,6 @@
 name: Publish Aukkhor preview and FlareStore feed
 on:
-  workflow_run:
-    workflows: ["Aukkhor iOS unsigned build"]
-    types: [completed]
+  workflow_dispatch:
 permissions:
   contents: write
   actions: read
@@ -11,7 +9,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    if: ${{ false }} # Retired: publish-install-variants.yml is the single publisher
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,13 +23,6 @@ jobs:
           name: Aukkhor-iOS-unsigned-${{ github.event.workflow_run.run_number }}
           github-token: ${{ github.token }}
           path: dist
-      - name: Download compatibility IPA from same verified build
-        uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ github.event.workflow_run.id }}
-          name: Aukkhor-iOS-compat-${{ github.event.workflow_run.run_number }}
-          github-token: ${{ github.token }}
-          path: dist
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -40,16 +31,17 @@ jobs:
         run: |
           set -euo pipefail
           test -s dist/Aukkhor-unsigned.ipa
-          test -s dist/Aukkhor-compat-unsigned.ipa
           TAG="v${VERSION}"
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber
-          else
-            gh release create "${TAG}" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
-              --target "${TARGET_SHA}" --prerelease \
-              --title "Aukkhor ${VERSION} preview" \
-              --notes "Unsigned IPA previews. Use the normal IPA when your signer supports matching App Group and Keychain entitlements; use the compatibility IPA if signing rejects them (extension preference sharing and Windows pairing inside the keyboard are reduced). iPhone installation and remote typing still need device tests."
+            gh release upload "${TAG}" dist/Aukkhor-unsigned.ipa --clobber && exit 0
+          elif gh release create "${TAG}" dist/Aukkhor-unsigned.ipa \
+            --target "${TARGET_SHA}" --prerelease --title "Aukkhor ${VERSION}" \
+            --notes "Native-style layout, customizable Liquid Glass themes, working background-free keycaps, and live keyboard preview. Unsigned IPA: sign host and keyboard extension together."; then
+            exit 0
           fi
+          mkdir -p "downloads/${TAG}"
+          cp dist/Aukkhor-unsigned.ipa "downloads/${TAG}/"
+          echo "AUkkHOR_DIRECT=1" >> "$GITHUB_ENV"
       - name: Update FlareStore source aliases
         env:
           VERSION: 0.2.0.${{ github.event.workflow_run.run_number }}
@@ -57,6 +49,17 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/update_feed.py --version "${VERSION}" --build-number "${BUILD}" --ipa dist/Aukkhor-unsigned.ipa
+          if [ "${AUkkHOR_DIRECT:-0}" = 1 ]; then
+            python3 - "$VERSION" <<'PYFEED'
+          import json,sys
+          from pathlib import Path
+          for name in ('repo.json','source.json'):
+              p=Path(name); data=json.loads(p.read_text())
+              data['apps'][0]['versions'][0]['downloadURL']=f'https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v{sys.argv[1]}/Aukkhor-unsigned.ipa'
+              p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n')
+          PYFEED
+            git add -f "downloads/v${VERSION}/Aukkhor-unsigned.ipa"
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add repo.json source.json

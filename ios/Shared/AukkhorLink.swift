@@ -5,7 +5,14 @@ import Security
 
 enum AukkhorSettings {
     static let group = "group.dev.soum91.aukkhor"
-    static var defaults: UserDefaults { UserDefaults(suiteName: group) ?? .standard }
+    static var sharedSettingsAvailable: Bool {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
+    }
+    static var defaults: UserDefaults {
+        // A suite can be constructed even when a sideload signer stripped its entitlement.
+        // In that case use the process's persistent settings, adjustable in the keyboard.
+        sharedSettingsAvailable ? (UserDefaults(suiteName: group) ?? .standard) : .standard
+    }
     static var host: String {
         get { defaults.string(forKey: "pcHost") ?? "" }
         set { defaults.set(newValue, forKey: "pcHost") }

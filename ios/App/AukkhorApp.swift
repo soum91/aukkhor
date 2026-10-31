@@ -10,6 +10,7 @@ import PhotosUI
 
 struct AukkhorHome: View {
     @Environment(\.scenePhase) private var scenePhase
+    @State private var keyboardSample = ""
     @State private var host = AukkhorSettings.host
     @State private var fingerprint = AukkhorSettings.fingerprint
     @State private var pairingCode = ""
@@ -21,6 +22,16 @@ struct AukkhorHome: View {
     @State private var lastWindows: String?
     @State private var keyboardPreset = KeyboardPreferences.preset
     @State private var accentColor = Color(UIColor(keyboardHex: KeyboardPreferences.customAccent))
+    @State private var backgroundColor = Color(UIColor(keyboardHex: KeyboardPreferences.customBackground))
+    @State private var keyColor = Color(UIColor(keyboardHex: KeyboardPreferences.customKey))
+    @State private var secondaryKeyColor = Color(UIColor(keyboardHex: KeyboardPreferences.customSecondaryKey))
+    @State private var textColor = Color(UIColor(keyboardHex: KeyboardPreferences.customForeground))
+    @State private var keyOpacity = Double(KeyboardPreferences.keyOpacity)
+    @State private var keySpacing = Double(KeyboardPreferences.keySpacing)
+    @State private var keyHeight = Double(KeyboardPreferences.keyHeight)
+    @State private var usesGlass = KeyboardPreferences.usesGlass
+    @State private var oneHand = KeyboardPreferences.oneHandSide
+    @State private var previewRevision = UUID()
     @State private var cornerRadius = Double(KeyboardPreferences.cornerRadius)
     @State private var haptics = KeyboardPreferences.haptics
     @State private var keySounds = KeyboardPreferences.keySounds
@@ -49,6 +60,126 @@ struct AukkhorHome: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Keyboard themes") {
+                    Picker("Theme", selection: $keyboardPreset) {
+                        ForEach(KeyboardPreset.allCases) { preset in
+                            Text(preset.title).tag(preset)
+                        }
+                    }
+                    .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
+                    KeyboardThemePreview(revision: previewRevision)
+                        .frame(height: numberRow ? 420 : 370)
+                        .listRowInsets(EdgeInsets())
+                    Text("Live keyboard preview. Use ⚙ in the keyboard to change keycaps directly if your signer does not preserve shared settings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    if keyboardPreset == .custom {
+                        ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
+                            .onChange(of: accentColor) { newColor in
+                                let converted = UIColor(newColor)
+                                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                                if converted.getRed(&r, green: &g, blue: &b, alpha: &a) {
+                                    KeyboardPreferences.customAccent = String(format: "#%02X%02X%02X",
+                                        Int(r * 255), Int(g * 255), Int(b * 255))
+                                }
+                            }
+                        ColorPicker("Background", selection: $backgroundColor, supportsOpacity: false)
+                            .onChange(of: backgroundColor) { KeyboardPreferences.customBackground = themeHex($0) }
+                        ColorPicker("Letter keys", selection: $keyColor, supportsOpacity: false)
+                            .onChange(of: keyColor) { KeyboardPreferences.customKey = themeHex($0) }
+                        ColorPicker("Action keys", selection: $secondaryKeyColor, supportsOpacity: false)
+                            .onChange(of: secondaryKeyColor) { KeyboardPreferences.customSecondaryKey = themeHex($0) }
+                        ColorPicker("Key text", selection: $textColor, supportsOpacity: false)
+                            .onChange(of: textColor) { KeyboardPreferences.customForeground = themeHex($0) }
+                        PhotosPicker(selection: $selectedBackground, matching: .images) {
+                            Label("Choose background photo", systemImage: "photo.on.rectangle")
+                        }
+                        .onChange(of: selectedBackground) { item in
+                            guard let item else { return }
+                            Task {
+                                do {
+                                    guard let bytes = try await item.loadTransferable(type: Data.self),
+                                          let image = UIImage(data: bytes) else {
+                                        backgroundStatus = "The selected image couldn't be decoded."
+                                        return
+                                    }
+                                    try KeyboardPreferences.setBackgroundImage(image)
+                                    themePhoto = KeyboardPreferences.backgroundImage
+                                    backgroundStatus = "Photo saved locally. Reopen the keyboard to see it."
+                                } catch { backgroundStatus = error.localizedDescription }
+                            }
+                        }
+                        if themePhoto != nil {
+                            Button("Remove background photo", role: .destructive) {
+                                do {
+                                    try KeyboardPreferences.removeBackgroundImage()
+                                    themePhoto = nil
+                                    backgroundStatus = "Photo removed."
+                                } catch { backgroundStatus = error.localizedDescription }
+                            }
+                        }
+                        if !backgroundStatus.isEmpty {
+                            Text(backgroundStatus).font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Picker("Keycap style", selection: $keycapStyle) {
+                        Text("Normal").tag(0)
+                        Text("No outlines").tag(1)
+                        Text("No key backgrounds").tag(2)
+                    }
+                    .onChange(of: keycapStyle) { KeyboardPreferences.keycapStyle = $0 }
+                    Toggle("Glass material", isOn: $usesGlass)
+                        .onChange(of: usesGlass) { KeyboardPreferences.usesGlass = $0 }
+                    Text("Liquid Glass uses Apple's glass material on iOS 26 and later, with a blur fallback on older iOS. Removing key backgrounds also removes glass, borders and shadows from every key, including Space.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading) {
+                        Text("Key roundness: \(Int(cornerRadius))")
+                        Slider(value: $cornerRadius, in: 0...24, step: 1)
+                            .onChange(of: cornerRadius) { KeyboardPreferences.cornerRadius = CGFloat($0) }
+                        Text("Key opacity: \(Int(keyOpacity * 100))%")
+                        Slider(value: $keyOpacity, in: 0.1...1)
+                            .onChange(of: keyOpacity) { KeyboardPreferences.keyOpacity = CGFloat($0) }
+                        Text("Key spacing: \(Int(keySpacing))")
+                        Slider(value: $keySpacing, in: 2...10, step: 1)
+                            .onChange(of: keySpacing) { KeyboardPreferences.keySpacing = CGFloat($0) }
+                        Text("Key height: \(Int(keyHeight))")
+                        Slider(value: $keyHeight, in: 36...56, step: 1)
+                            .onChange(of: keyHeight) { KeyboardPreferences.keyHeight = CGFloat($0) }
+                    }
+                    Picker("One-handed layout", selection: $oneHand) {
+                        Text("Full width").tag(0)
+                        Text("Left").tag(1)
+                        Text("Right").tag(2)
+                    }
+                    .onChange(of: oneHand) { KeyboardPreferences.oneHandSide = $0 }
+                    TextField("Try your keyboard here", text: $keyboardSample)
+                    Text("Text Replacement uses Settings → General → Keyboard → Text Replacement through the iOS supplementary lexicon.")
+                        .font(.caption).foregroundStyle(.secondary)
+
+                }
+
+                Section("Typing preferences") {
+                    Toggle("Key haptics", isOn: $haptics)
+                        .onChange(of: haptics) { KeyboardPreferences.haptics = $0 }
+                    Toggle("Key sounds", isOn: $keySounds)
+                        .onChange(of: keySounds) { KeyboardPreferences.keySounds = $0 }
+                    Toggle("Dedicated number row", isOn: $numberRow)
+                        .onChange(of: numberRow) { KeyboardPreferences.numberRow = $0 }
+                    Toggle("Word suggestions", isOn: $suggestions)
+                        .onChange(of: suggestions) { KeyboardPreferences.suggestions = $0 }
+                    Toggle("Conservative autocorrect", isOn: $autocorrect)
+                        .onChange(of: autocorrect) { KeyboardPreferences.autocorrect = $0 }
+                    Toggle("Automatic capitals", isOn: $autoCaps)
+                        .onChange(of: autoCaps) { KeyboardPreferences.autoCapitalize = $0 }
+                    Toggle("Double space for period", isOn: $doubleSpace)
+                        .onChange(of: doubleSpace) { KeyboardPreferences.doubleSpacePeriod = $0 }
+                    Toggle("Experimental English glide typing", isOn: $experimentalGlide)
+                        .onChange(of: experimentalGlide) { KeyboardPreferences.experimentalGlide = $0 }
+                    Text("Glide decoding is an early local implementation, not Gboard's mature gesture model. Leave it off if it interferes with normal typing.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Suggestions use a local starter dictionary and available iOS text replacements. Typing is not uploaded or used for training.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("Windows companion (optional)") {
                     TextField("PC IPv4, e.g. 192.168.1.20", text: $host)
                         .textInputAutocapitalization(.never).keyboardType(.numbersAndPunctuation)
@@ -118,94 +249,6 @@ struct AukkhorHome: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
-                Section("Keyboard themes") {
-                    Picker("Theme", selection: $keyboardPreset) {
-                        ForEach(KeyboardPreset.allCases) { preset in
-                            Text(preset.title).tag(preset)
-                        }
-                    }
-                    .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
-                    KeyboardThemePreview(preset: keyboardPreset,
-                                         accent: keyboardPreset == .custom ? accentColor : nil,
-                                         photo: keyboardPreset == .custom ? themePhoto : nil,
-                                         cornerRadius: CGFloat(cornerRadius))
-                    if keyboardPreset == .custom {
-                        ColorPicker("Accent color", selection: $accentColor, supportsOpacity: false)
-                            .onChange(of: accentColor) { newColor in
-                                let converted = UIColor(newColor)
-                                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-                                if converted.getRed(&r, green: &g, blue: &b, alpha: &a) {
-                                    KeyboardPreferences.customAccent = String(format: "#%02X%02X%02X",
-                                        Int(r * 255), Int(g * 255), Int(b * 255))
-                                }
-                            }
-                        PhotosPicker(selection: $selectedBackground, matching: .images) {
-                            Label("Choose background photo", systemImage: "photo.on.rectangle")
-                        }
-                        .onChange(of: selectedBackground) { item in
-                            guard let item else { return }
-                            Task {
-                                do {
-                                    guard let bytes = try await item.loadTransferable(type: Data.self),
-                                          let image = UIImage(data: bytes) else {
-                                        backgroundStatus = "The selected image couldn't be decoded."
-                                        return
-                                    }
-                                    try KeyboardPreferences.setBackgroundImage(image)
-                                    themePhoto = KeyboardPreferences.backgroundImage
-                                    backgroundStatus = "Photo saved locally. Reopen the keyboard to see it."
-                                } catch { backgroundStatus = error.localizedDescription }
-                            }
-                        }
-                        if themePhoto != nil {
-                            Button("Remove background photo", role: .destructive) {
-                                do {
-                                    try KeyboardPreferences.removeBackgroundImage()
-                                    themePhoto = nil
-                                    backgroundStatus = "Photo removed."
-                                } catch { backgroundStatus = error.localizedDescription }
-                            }
-                        }
-                        if !backgroundStatus.isEmpty {
-                            Text(backgroundStatus).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Picker("Keycap style", selection: $keycapStyle) {
-                        Text("Normal").tag(0)
-                        Text("No outlines").tag(1)
-                        Text("No key backgrounds").tag(2)
-                    }
-                    .onChange(of: keycapStyle) { KeyboardPreferences.keycapStyle = $0 }
-                    HStack {
-                        Text("Key roundness")
-                        Slider(value: $cornerRadius, in: 4...20, step: 1)
-                            .onChange(of: cornerRadius) { KeyboardPreferences.cornerRadius = CGFloat($0) }
-                    }
-                }
-
-                Section("Typing preferences") {
-                    Toggle("Key haptics", isOn: $haptics)
-                        .onChange(of: haptics) { KeyboardPreferences.haptics = $0 }
-                    Toggle("Key sounds", isOn: $keySounds)
-                        .onChange(of: keySounds) { KeyboardPreferences.keySounds = $0 }
-                    Toggle("Dedicated number row", isOn: $numberRow)
-                        .onChange(of: numberRow) { KeyboardPreferences.numberRow = $0 }
-                    Toggle("Word suggestions", isOn: $suggestions)
-                        .onChange(of: suggestions) { KeyboardPreferences.suggestions = $0 }
-                    Toggle("Conservative autocorrect", isOn: $autocorrect)
-                        .onChange(of: autocorrect) { KeyboardPreferences.autocorrect = $0 }
-                    Toggle("Automatic capitals", isOn: $autoCaps)
-                        .onChange(of: autoCaps) { KeyboardPreferences.autoCapitalize = $0 }
-                    Toggle("Double space for period", isOn: $doubleSpace)
-                        .onChange(of: doubleSpace) { KeyboardPreferences.doubleSpacePeriod = $0 }
-                    Toggle("Experimental English glide typing", isOn: $experimentalGlide)
-                        .onChange(of: experimentalGlide) { KeyboardPreferences.experimentalGlide = $0 }
-                    Text("Glide decoding is an early local implementation, not Gboard's mature gesture model. Leave it off if it interferes with normal typing.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text("Suggestions use a local starter dictionary and available iOS text replacements. Typing is not uploaded or used for training.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-
                 Section("One-time codes") {
                     Button("Forward code from clipboard") { Task { await forwardCode() } }
                     Text("Use the Aukkhor Shortcuts action ‘Forward Code to Windows’ for text handed to it by a Messages automation, Siri, or a Share/Copy action. Aukkhor cannot independently read SMS, Mail, or Gmail.")
@@ -223,6 +266,9 @@ struct AukkhorHome: View {
                         status = "Pairing removed."
                     }
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+                previewRevision = UUID()
             }
             .navigationTitle("Aukkhor · অক্ষর")
             .sheet(item: $tvPrompt) { prompt in
@@ -253,6 +299,13 @@ struct AukkhorHome: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    private func themeHex(_ color: Color) -> String {
+        let converted = UIColor(color)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard converted.getRed(&r, green: &g, blue: &b, alpha: &a) else { return "#FFFFFF" }
+        return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 
     private func checkWindowsPrompt() async {
@@ -368,60 +421,16 @@ struct AukkhorHome: View {
     }
 }
 
-private struct KeyboardThemePreview: View {
-    let preset: KeyboardPreset
-    let accent: Color?
-    let photo: UIImage?
-    let cornerRadius: CGFloat
-
-    private var colors: (Color, Color, Color, Color) {
-        switch preset {
-        case .system: return (Color(.secondarySystemBackground), Color(.tertiarySystemBackground), .primary, .indigo)
-        case .midnight: return (Color(UIColor(keyboardHex: "#101728")), Color(UIColor(keyboardHex: "#27344D")), .white, .cyan)
-        case .fullBlack: return (.black, Color(UIColor(keyboardHex: "#111111")), .white, .white)
-        case .liquidGlass: return (Color(UIColor(keyboardHex: "#11131A")), Color(UIColor(keyboardHex: "#353B48")).opacity(0.65), .white, .cyan)
-        case .blossom: return (Color(UIColor(keyboardHex: "#FFF0F5")), .white, .black, .pink)
-        case .mint: return (Color(UIColor(keyboardHex: "#DCEFE9")), .white, .black, .green)
-        case .sunset: return (Color(UIColor(keyboardHex: "#3D2145")), Color(UIColor(keyboardHex: "#634064")), .white, .orange)
-        case .highContrast: return (.black, Color(white: 0.16), .white, .yellow)
-        case .custom: return (Color(.secondarySystemBackground), Color(.tertiarySystemBackground), .primary, accent ?? .purple)
-        }
+// Render the actual keyboard rather than an unrelated mockup.
+private struct KeyboardThemePreview: UIViewControllerRepresentable {
+    let revision: UUID
+    func makeUIViewController(context: Context) -> KeyboardViewController {
+        KeyboardViewController()
     }
-
-    var body: some View {
-        let values = colors
-        VStack(spacing: 5) {
-            ForEach(["QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM"], id: \.self) { line in
-                HStack(spacing: 4) {
-                    ForEach(Array(line.enumerated()), id: \.offset) { item in
-                        Text(String(item.element))
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(maxWidth: .infinity, minHeight: 27)
-                            .foregroundStyle(values.2)
-                            .background(values.1, in: RoundedRectangle(cornerRadius: cornerRadius))
-                    }
-                }
-            }
-            Text("Space  ·  বাংলা  ·  🌐")
-                .font(.caption).foregroundStyle(values.2)
-                .frame(maxWidth: .infinity, minHeight: 28)
-                .background(values.3.opacity(0.25), in: RoundedRectangle(cornerRadius: cornerRadius))
-        }
-        .padding(10)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(values.0)
-                .overlay {
-                    if let photo {
-                        Image(uiImage: photo).resizable().scaledToFill()
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-        }
-        .accessibilityLabel("Preview of \(preset.title) keyboard theme")
+    func updateUIViewController(_ controller: KeyboardViewController, context: Context) {
+        controller.reloadAppearance()
     }
 }
-
 
 private enum RemoteTypingDestination { case tv, windows }
 

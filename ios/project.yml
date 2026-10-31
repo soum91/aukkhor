@@ -17,6 +17,7 @@ targets:
     platform: iOS
     sources:
       - path: App
+      - path: Keyboard/KeyboardViewController.swift
       - path: Shared
       - path: Assets.xcassets
     settings:
@@ -71,11 +72,24 @@ targets:
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
     entitlements:
       path: Keyboard/AukkhorKeyboard.entitlements
+  AukkhorTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+    dependencies:
+      - target: Aukkhor
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Aukkhor:
     build:
       targets:
         Aukkhor: all
+    test:
+      targets:
+        - AukkhorTests
     archive:
       config: Release
 

@@ -12,10 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 ICON = "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png"
 SOURCE = "https://raw.githubusercontent.com/soum91/aukkhor/main/repo.json"
 CHANGES = (
-    "Preview build: English, phonetic Bangla and direct Bangla; theme presets and "
-    "custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. "
-    "Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. "
-    "Unsigned IPA: sign with your own valid iOS provisioning profile."
+    "Native-style staggered rows, Shift/Delete on row three, wide blended Space, "
+    "left/right one-handed layouts with tools in the spare side strip. "
+    "Native Liquid Glass on iOS 26+, background-free keycaps including Space, "
+    "custom background/key/action/text colors, opacity, spacing and height, live keyboard preview. "
+    "Retains English/Bangla/phonetic, native text replacements, numbers, emoji, "
+    "Shortcuts OTP forwarding, Windows clipboard and TV/Windows remote typing. "
+    "Main app plus keyboard only; unsigned IPA requires signing."
 )
 
 

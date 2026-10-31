@@ -43,7 +43,8 @@ class SourceContract(unittest.TestCase):
             contents = self.read(path)
             self.assertIn("group.dev.soum91.aukkhor", contents)
             self.assertIn("dev.soum91.aukkhor.shared", contents)
-        self.assertIn("com.apple.share-services", project)
+        self.assertNotIn("com.apple.share-services", project)
+        self.assertNotIn("target: AukkhorShare", project)
 
     def test_foreground_and_explicit_code(self):
         app = self.read("ios/App/AukkhorApp.swift")

@@ -30,6 +30,42 @@ enum KeyboardPreferences {
         get { data.string(forKey: "keyboardAccent") ?? "#5B37B0" }
         set { data.set(newValue, forKey: "keyboardAccent") }
     }
+    static var customBackground: String {
+        get { data.string(forKey: "keyboardBackground") ?? "#202126" }
+        set { data.set(newValue, forKey: "keyboardBackground") }
+    }
+    static var customKey: String {
+        get { data.string(forKey: "keyboardKey") ?? "#35363C" }
+        set { data.set(newValue, forKey: "keyboardKey") }
+    }
+    static var customSecondaryKey: String {
+        get { data.string(forKey: "keyboardSecondaryKey") ?? "#484953" }
+        set { data.set(newValue, forKey: "keyboardSecondaryKey") }
+    }
+    static var customForeground: String {
+        get { data.string(forKey: "keyboardForeground") ?? "#FFFFFF" }
+        set { data.set(newValue, forKey: "keyboardForeground") }
+    }
+    static var keyOpacity: CGFloat {
+        get { CGFloat(data.object(forKey: "keyboardKeyOpacity") as? Double ?? 0.72) }
+        set { data.set(Double(max(0.1, min(1, newValue))), forKey: "keyboardKeyOpacity") }
+    }
+    static var keySpacing: CGFloat {
+        get { CGFloat(data.object(forKey: "keyboardKeySpacing") as? Double ?? 6) }
+        set { data.set(Double(max(2, min(10, newValue))), forKey: "keyboardKeySpacing") }
+    }
+    static var keyHeight: CGFloat {
+        get { CGFloat(data.object(forKey: "keyboardKeyHeight") as? Double ?? 43) }
+        set { data.set(Double(max(36, min(56, newValue))), forKey: "keyboardKeyHeight") }
+    }
+    static var oneHandSide: Int {
+        get { data.integer(forKey: "keyboardOneHandSide") }
+        set { data.set(max(0, min(2, newValue)), forKey: "keyboardOneHandSide") }
+    }
+    static var usesGlass: Bool {
+        get { data.object(forKey: "keyboardUsesGlass") as? Bool ?? false }
+        set { data.set(newValue, forKey: "keyboardUsesGlass") }
+    }
     static var cornerRadius: CGFloat {
         get { CGFloat(data.object(forKey: "keyboardCornerRadius") as? Double ?? 7) }
         set { data.set(Double(newValue), forKey: "keyboardCornerRadius") }
@@ -169,13 +205,52 @@ struct KeyboardPalette {
                          muted: .white, accent: .yellow, border: .white)
         case .custom:
             let accent = UIColor(keyboardHex: KeyboardPreferences.customAccent)
-            return .init(background: dark ? UIColor(keyboardHex: "#202126") : UIColor(keyboardHex: "#E8E9EF"),
-                         key: dark ? UIColor(keyboardHex: "#35363C") : .white,
-                         secondaryKey: dark ? UIColor(keyboardHex: "#484953") : UIColor(keyboardHex: "#CFD0DE"),
-                         foreground: dark ? .white : .black,
-                         muted: dark ? .lightGray : .darkGray,
+            return .init(background: UIColor(keyboardHex: KeyboardPreferences.customBackground),
+                         key: UIColor(keyboardHex: KeyboardPreferences.customKey),
+                         secondaryKey: UIColor(keyboardHex: KeyboardPreferences.customSecondaryKey),
+                         foreground: UIColor(keyboardHex: KeyboardPreferences.customForeground),
+                         muted: UIColor(keyboardHex: KeyboardPreferences.customForeground).withAlphaComponent(0.7),
                          accent: accent, border: accent.withAlphaComponent(0.5))
         }
     }
 }
 
+
+// Used by every key, including Space, actions and suggestion candidates.
+enum KeyboardKeyAppearance {
+    static func apply(to button: UIButton, palette: KeyboardPalette, secondary: Bool = false) {
+        button.subviews.filter { $0.tag == 9401 }.forEach { $0.removeFromSuperview() }
+        button.backgroundColor = .clear
+        button.layer.borderWidth = 0
+        button.layer.shadowOpacity = 0
+        button.layer.cornerRadius = KeyboardPreferences.cornerRadius
+        guard KeyboardPreferences.keycapStyle != 2 else { return }
+        let color = secondary ? palette.secondaryKey : palette.key
+        let glass = KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass
+        if glass && !UIAccessibility.isReduceTransparencyEnabled {
+            let effect: UIVisualEffect
+            if #available(iOS 26.0, *) {
+                let material = UIGlassEffect(style: .regular)
+                material.isInteractive = true
+                material.tintColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
+                effect = material
+            } else {
+                effect = UIBlurEffect(style: .systemUltraThinMaterial)
+            }
+            let backdrop = UIVisualEffectView(effect: effect)
+            backdrop.tag = 9401
+            backdrop.isUserInteractionEnabled = false
+            backdrop.frame = button.bounds
+            backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            backdrop.layer.cornerRadius = KeyboardPreferences.cornerRadius
+            backdrop.clipsToBounds = true
+            button.insertSubview(backdrop, at: 0)
+        } else {
+            button.backgroundColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
+        }
+        if KeyboardPreferences.keycapStyle == 0 {
+            button.layer.borderWidth = glass ? 0.5 : 0.25
+            button.layer.borderColor = palette.border.withAlphaComponent(0.4).cgColor
+        }
+    }
+}

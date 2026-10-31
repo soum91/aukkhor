@@ -4,6 +4,31 @@ Native iPhone keyboard with English, phonetic Bangla, and Bangla layouts, plus a
 
 A native iOS custom keyboard and separate Windows companion. The app is a new project, not a Drift dependency.
 
+## Keyboard layout and theme update
+
+- Native-style QWERTY geometry with equal letter widths, staggered second row, Shift and Delete beside row three, wide Space, 123/emoji/Return and a globe footer with Apple's input-mode menu.
+- Left/Full/Right layout menu. Tools sit in the unused strip opposite the typing hand; full-width mode can open the rail using ⚙.
+- Every key uses one appearance renderer. No key backgrounds removes fill, glass, outline and shadow, including Space, tools and suggestions.
+- Apple's UIGlassEffect on iOS 26+, blur fallback on iOS 16–18, and Reduce Transparency support. Custom colors for background, letters, actions, text and accent; opacity, radius, spacing, height and photo controls.
+- The settings preview renders the actual keyboard controller. Keyboard-local ⚙ controls remain usable if a signer removes shared App Group access.
+- Main app plus keyboard extension only. The Share extension remains excluded as requested. OTP handoff uses Shortcuts; Windows clipboard sync and direct TV pairing remain available.
+- Unit tests exercise 320/390/430/844-point layouts and all three handedness modes. CI retains screenshot attachments in its layout test result bundle. Physical iPhone, TV and Windows testing is still required.
+
+### Feature audit against the earlier Aukkhor chat
+
+| Request | Implementation and limits |
+| --- | --- |
+| English, Bangla, phonetic | Implemented; phonetic dictionary remains a starter implementation |
+| Native geometry, number row, emoji, one hand | Implemented; emoji catalog is a curated offline subset |
+| Full Black, Liquid Glass, removable keycaps, theme customization | Implemented through one renderer and real keyboard preview |
+| Built-in iOS Text Replacement | Uses `requestSupplementaryLexicon`; iOS chooses entries it exposes |
+| Paste, Cut, Define, Speak, cursor movement | Implemented; clipboard requires Full Access and tools enabled |
+| Siri and OTP to Windows | App Intents / Shortcuts and explicit clipboard actions; no automatic SMS reader |
+| Windows pasteboard sync | Foreground app sync plus explicit keyboard send/get |
+| iPhone typing for TV and Windows | Direct paired connections; auto prompt polling while iPhone app is foregrounded |
+| Password/OTP AutoFill like iOS | System-controlled; custom keyboard does not implement Apple's private AutoFill UI |
+| Remove Share extension | Excluded from current app and publishing pipeline |
+
 ## Current implementation
 
 - English QWERTY, direct Bangla character keys, and phonetic Bangla composition with basic consonant conjuncts.
@@ -15,7 +40,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 - Selected-text Cut, explicit Paste, system dictionary Define, Speak selected/nearby text, and keyboard language switch.
 - Clipboard push/pull over mutually authenticated, certificate-pinned HTTPS on a private local network. Keyboard operations are explicitly initiated, not an invisible background monitor.
 - Siri / Shortcuts intents for sending clipboard text and forwarding a one-time code. Windows keeps the code briefly and offers Copy or **Ctrl+Alt+B** to type it in the focused app.
-- A user-invoked **Send code to Windows** Share extension can accept selected text from apps that expose text sharing, including compatible Mail/Gmail/Message views.
+- The former Share extension is excluded from the current app; use the Shortcuts intent for code forwarding.
 - A single opt-in 4–8 digit one-time code may be sent by user action or a user-configured Shortcuts automation. The app does **not** read SMS, Apple Mail, Gmail, or notifications on its own.
 
 ## Build
@@ -31,7 +56,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 3. Enable Aukkhor in iOS Settings > General > Keyboard > Keyboards > Add New Keyboard. Allow **Full Access** only if you want the pasteboard or Windows features. The keyboard app itself explains this.
 4. Tap the clipboard buttons in the keyboard to pull from Windows or send the iPhone clipboard. In the containing app, enable foreground clipboard sync if desired.
 5. In Shortcuts, add the Aukkhor actions **Forward Code to Windows** or **Send Clipboard to Windows**. To forward codes found in a Message, configure a Messages personal automation and feed its text to the Forward Code action. iOS may require a foreground/confirmation step depending on the trigger and OS version.
-6. In Mail, Gmail, or Messages, select the code text and use **Share → Send code to Windows** when that app offers text sharing. Review the last two digits, then confirm.
+6. Copy code text and use the containing app or the Forward Code to Windows Shortcut.
 
 ## Limitations and security
 

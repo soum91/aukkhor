@@ -73,7 +73,7 @@ def main():
             "buildVersion": str(args.build),
             "date": date.today().isoformat(),
             "localizedDescription": note,
-            "changelog": "Removed Share extension and all standalone probes; only host and keyboard remain.",
+            "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
             "downloadURL": f"{prefix}/{IPA}",
             "size": (args.directory / IPA).stat().st_size,
             "minOSVersion": "16.0",
