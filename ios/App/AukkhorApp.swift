@@ -24,6 +24,7 @@ struct AukkhorHome: View {
     @State private var cornerRadius = Double(KeyboardPreferences.cornerRadius)
     @State private var haptics = KeyboardPreferences.haptics
     @State private var keySounds = KeyboardPreferences.keySounds
+    @State private var keycapStyle = KeyboardPreferences.keycapStyle
     @State private var numberRow = KeyboardPreferences.numberRow
     @State private var suggestions = KeyboardPreferences.suggestions
     @State private var autocorrect = KeyboardPreferences.autocorrect
@@ -169,6 +170,12 @@ struct AukkhorHome: View {
                             Text(backgroundStatus).font(.caption).foregroundStyle(.secondary)
                         }
                     }
+                    Picker("Keycap style", selection: $keycapStyle) {
+                        Text("Normal").tag(0)
+                        Text("No outlines").tag(1)
+                        Text("No key backgrounds").tag(2)
+                    }
+                    .onChange(of: keycapStyle) { KeyboardPreferences.keycapStyle = $0 }
                     HStack {
                         Text("Key roundness")
                         Slider(value: $cornerRadius, in: 4...20, step: 1)
@@ -371,6 +378,8 @@ private struct KeyboardThemePreview: View {
         switch preset {
         case .system: return (Color(.secondarySystemBackground), Color(.tertiarySystemBackground), .primary, .indigo)
         case .midnight: return (Color(UIColor(keyboardHex: "#101728")), Color(UIColor(keyboardHex: "#27344D")), .white, .cyan)
+        case .fullBlack: return (.black, Color(UIColor(keyboardHex: "#111111")), .white, .white)
+        case .liquidGlass: return (Color(UIColor(keyboardHex: "#11131A")), Color(UIColor(keyboardHex: "#353B48")).opacity(0.65), .white, .cyan)
         case .blossom: return (Color(UIColor(keyboardHex: "#FFF0F5")), .white, .black, .pink)
         case .mint: return (Color(UIColor(keyboardHex: "#DCEFE9")), .white, .black, .green)
         case .sunset: return (Color(UIColor(keyboardHex: "#3D2145")), Color(UIColor(keyboardHex: "#634064")), .white, .orange)
