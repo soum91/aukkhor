@@ -176,15 +176,20 @@ private final class KeyboardHostField: UITextField {
         try await Task.sleep(for: .milliseconds(800))
         keyboard.view.layoutIfNeeded()
         XCTAssertNotNil(root.window, "Exercise UIKit's real responder input-view presentation")
+        XCTAssertGreaterThan(root.bounds.width, 250, "Keyboard must be visible at a usable width on first presentation")
         XCTAssertEqual(root.bounds.height, KeyboardPreferences.typingHeight, accuracy: 1)
         let surface = try XCTUnwrap(root.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" })
         XCTAssertEqual(surface.frame, root.bounds, "Background fills the hosted input view without an inset band")
         XCTAssertEqual(surface.layer.cornerRadius, 20)
         let space = try XCTUnwrap(buttons(in: root).first { $0.accessibilityLabel == "Space" })
         XCTAssertEqual(space.convert(space.bounds, to: root).maxY, root.bounds.maxY, accuracy: 0.5)
+        var rendered = false
         let image = UIGraphicsImageRenderer(bounds: root.bounds).image { _ in
-            root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
+            rendered = root.drawHierarchy(in: root.bounds, afterScreenUpdates: true)
         }
+        XCTAssertTrue(rendered, "Hosted keyboard evidence must contain a completed screen render")
+        XCTAssertGreaterThan(image.size.width, 250)
+        XCTAssertGreaterThan(image.size.height, 200)
         let attachment = XCTAttachment(image: image)
         attachment.name = "hosted-full-black-with-numbers"
         attachment.lifetime = .keepAlways
