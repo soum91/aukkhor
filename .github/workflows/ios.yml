@@ -34,6 +34,11 @@ jobs:
           test -d "$APP/PlugIns/AukkhorShare.appex"
           test -s "$APP/Assets.car"
           /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist" | grep -Fx com.apple.keyboard-service
+          for plist in "$APP/Info.plist" "$APP/PlugIns/AukkhorKeyboard.appex/Info.plist" "$APP/PlugIns/AukkhorShare.appex/Info.plist"; do
+            display_name=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "$plist")
+            test -n "$display_name" || { echo "::error::Missing CFBundleDisplayName in $plist"; exit 1; }
+            echo "$plist: $display_name"
+          done
           mkdir -p "$RUNNER_TEMP/AukkhorPackage/Payload"
           cp -R "$APP" "$RUNNER_TEMP/AukkhorPackage/Payload/"
           (cd "$RUNNER_TEMP/AukkhorPackage" && zip -qr "$GITHUB_WORKSPACE/Aukkhor-unsigned.ipa" Payload)
@@ -110,6 +115,12 @@ jobs:
                   assert len(extensions) == expected, (filename, extensions, expected)
                   assert 'Payload/Aukkhor.app/Info.plist' in names
                   assert 'Payload/Aukkhor.app/Aukkhor' in names
+                  import plistlib
+                  plists = ['Payload/Aukkhor.app/Info.plist']
+                  plists += [p for p in names if p.endswith('.appex/Info.plist')]
+                  for plist in plists:
+                      info = plistlib.loads(ipa.read(plist))
+                      assert isinstance(info.get('CFBundleDisplayName'), str) and info['CFBundleDisplayName'].strip(), (filename, plist, 'missing display name')
                   print(filename, 'extensions:', ', '.join(sorted(extensions)) or 'none')
           PY
       - uses: actions/upload-artifact@v4
