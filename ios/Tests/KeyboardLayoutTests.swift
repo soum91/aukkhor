@@ -297,6 +297,7 @@ private final class KeyboardHostField: UITextField {
         let oldTint = KeyboardPreferences.glassTintStrength
         let oldInteractive = KeyboardPreferences.interactiveGlass
         let oldSide = KeyboardPreferences.oneHandSide
+        let oldForeground = KeyboardPreferences.customForeground
         defer {
             KeyboardPreferences.preset = oldPreset
             KeyboardPreferences.keycapStyle = oldStyle
@@ -305,8 +306,10 @@ private final class KeyboardHostField: UITextField {
             KeyboardPreferences.glassTintStrength = oldTint
             KeyboardPreferences.interactiveGlass = oldInteractive
             KeyboardPreferences.oneHandSide = oldSide
+            KeyboardPreferences.customForeground = oldForeground
         }
         KeyboardPreferences.preset = .custom
+        KeyboardPreferences.customForeground = "#FFFFFF"
         KeyboardPreferences.usesGlass = true
         KeyboardPreferences.keycapStyle = 2
         KeyboardPreferences.oneHandSide = 2
@@ -327,6 +330,8 @@ private final class KeyboardHostField: UITextField {
             let glass = try XCTUnwrap(canvas(in: keyboard.view))
             let native = try XCTUnwrap(glass.effect as? UIGlassEffect)
             XCTAssertTrue(native.isInteractive)
+            XCTAssertEqual(glass.overrideUserInterfaceStyle, .dark,
+                           "White theme text needs the dark material appearance")
             XCTAssertEqual(glass.alpha, 1)
             let surface = try XCTUnwrap(keyboard.view.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" })
             XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0,
@@ -337,7 +342,9 @@ private final class KeyboardHostField: UITextField {
             }
             let q = try XCTUnwrap(buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
             keyboard.tapShift()
-            XCTAssertTrue(native === glass.effect)
+            // UIVisualEffectView copies material values; the view is the reuse contract.
+            XCTAssertTrue(glass === canvas(in: keyboard.view))
+            XCTAssertTrue((glass.effect as? UIGlassEffect)?.isInteractive == native.isInteractive)
             XCTAssertTrue(q === buttons(in: keyboard.view).first { $0.title(for: .normal) == "Q" })
             capture(keyboard, name: clear ? "canvas-clear-no-keycaps" : "canvas-frosted-no-keycaps",
                     patternedBackdrop: true)
