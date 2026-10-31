@@ -147,10 +147,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.setTitle(title, for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: title.count > 3 ? 13 : 19, weight: .medium)
         button.setTitleColor(foreground == .label ? palette.foreground : foreground, for: .normal)
-        button.backgroundColor = hasPhotoBackground ? palette.key.withAlphaComponent(0.79) : palette.key
-        button.layer.cornerRadius = KeyboardPreferences.cornerRadius
-        button.layer.borderWidth = 0.4
+        let glass = KeyboardPreferences.preset == .liquidGlass
+        let style = KeyboardPreferences.keycapStyle
+        button.backgroundColor = style == 2 ? .clear : (glass ? palette.key.withAlphaComponent(0.66) : (hasPhotoBackground ? palette.key.withAlphaComponent(0.79) : palette.key))
+        button.layer.cornerRadius = glass ? max(13, KeyboardPreferences.cornerRadius) : KeyboardPreferences.cornerRadius
+        button.layer.borderWidth = style == 0 ? (glass ? 0.8 : 0.4) : 0
         button.layer.borderColor = palette.border.cgColor
+        if glass && style != 2 {
+            button.layer.shadowColor = UIColor.white.cgColor
+            button.layer.shadowOpacity = 0.12
+            button.layer.shadowRadius = 3
+            button.layer.shadowOffset = CGSize(width: 0, height: 1)
+        }
         button.accessibilityLabel = title
         button.addAction(UIAction { [weak self] _ in self?.feedback(); action() }, for: .touchUpInside)
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -207,7 +215,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             let button = makeButton(name, action: action)
             button.titleLabel?.font = .systemFont(ofSize: 12, weight: .semibold)
             button.widthAnchor.constraint(equalToConstant: name.count > 4 ? 65 : 50).isActive = true
-            button.backgroundColor = palette.secondaryKey
+            if KeyboardPreferences.keycapStyle != 2 { button.backgroundColor = KeyboardPreferences.preset == .liquidGlass ? palette.secondaryKey.withAlphaComponent(0.65) : palette.secondaryKey }
             tools.addArrangedSubview(button)
         }
         return scroll
