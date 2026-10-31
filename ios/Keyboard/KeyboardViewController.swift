@@ -61,7 +61,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suggestionGeneration = 0
     private var suggestionRequestKey: String?
 
-    private let glassBackdrop = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let glassBackdrop = UIVisualEffectView(effect: nil)
     private let stack = UIStackView()
     private let contentStack = UIStackView()
     private var toolsExpanded = false
@@ -73,7 +73,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func loadView() {
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width,
-                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .keyboard)
+                                                   height: KeyboardPreferences.typingHeight), inputViewStyle: .default)
         root.allowsSelfSizing = true
         root.autoresizingMask = [.flexibleWidth]
         root.backgroundColor = .clear
@@ -104,6 +104,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
         surface.addSubview(backgroundImageView)
         glassBackdrop.translatesAutoresizingMaskIntoConstraints = false
+        glassBackdrop.accessibilityIdentifier = "keyboard.canvasGlass"
+        glassBackdrop.layer.cornerRadius = 20
+        glassBackdrop.layer.cornerCurve = .continuous
+        glassBackdrop.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+        glassBackdrop.clipsToBounds = true
         surface.addSubview(glassBackdrop)
         NSLayoutConstraint.activate([
             glassBackdrop.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -122,12 +127,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         contentStack.axis = .horizontal
         contentStack.spacing = 6
         contentStack.translatesAutoresizingMaskIntoConstraints = false
-        surface.addSubview(contentStack)
+        glassBackdrop.contentView.addSubview(contentStack)
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 4),
-            contentStack.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -4),
-            contentStack.topAnchor.constraint(equalTo: surface.topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
+            contentStack.leadingAnchor.constraint(equalTo: glassBackdrop.contentView.leadingAnchor, constant: 4),
+            contentStack.trailingAnchor.constraint(equalTo: glassBackdrop.contentView.trailingAnchor, constant: -4),
+            contentStack.topAnchor.constraint(equalTo: glassBackdrop.contentView.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: glassBackdrop.contentView.bottomAnchor)
         ])
         contentStack.addArrangedSubview(stack)
         // Messages overlay the existing strip; showing one never resizes the keys.
@@ -138,7 +143,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.layer.cornerRadius = 6
         banner.clipsToBounds = true
         banner.isHidden = true
-        surface.addSubview(banner)
+        glassBackdrop.contentView.addSubview(banner)
         NSLayoutConstraint.activate([
             banner.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
@@ -392,7 +397,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            ("⚙", { [weak self] in self?.settingsPanel.toggle(); self?.buildKeys() }),
+            ("⚙", { [weak self] in self?.toggleAppearancePanel() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
@@ -462,9 +467,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         hand.showsMenuAsPrimaryAction = true
         strip.addArrangedSubview(hand)
         strip.addArrangedSubview(stripButton("⚙", action: { [weak self] in
-            guard let self else { return }
-            if self.oneHandSide == 0 { self.toolsExpanded.toggle() }
-            self.settingsPanel.toggle(); self.buildKeys()
+            self?.toggleAppearancePanel()
         }))
         return strip
     }
@@ -478,12 +481,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
         shiftButton = nil
-        let panelHeight: CGFloat = settingsPanel ? 440 : (emojiMode ? 440 : KeyboardPreferences.typingHeight)
-        keyboardHeightConstraint?.constant = panelHeight
-        (inputView as? KeyboardInputView)?.contentHeight = panelHeight
-        surface.backgroundColor = palette.background
-        glassBackdrop.isHidden = !(KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass)
-        glassBackdrop.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+        KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         hasPhotoBackground = backgroundImageView.image != nil
         stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() }
@@ -562,6 +560,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.isHidden = true
         refreshShiftKeys()
         refreshSuggestions()
+        // Fit settings/emoji content without a separate hard-coded panel height.
+        let availableWidth = max(160, view.bounds.width - 8)
+        let keyWidth = oneHandSide == 0 && !toolsExpanded ? availableWidth : availableWidth * 0.82 - 6
+        let contentHeight = stack.systemLayoutSizeFitting(
+            CGSize(width: keyWidth, height: UIView.layoutFittingCompressedSize.height),
+            withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
+        let height = max(KeyboardPreferences.typingHeight, contentHeight)
+        keyboardHeightConstraint?.constant = height
+        (inputView as? KeyboardInputView)?.contentHeight = height
     }
 
     private func colorControl(_ title: String, set: @escaping (String) -> Void) -> UIButton {
@@ -577,6 +584,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         })
         button.showsMenuAsPrimaryAction = true
         return button
+    }
+
+    func toggleAppearancePanel() {
+        if oneHandSide == 0 { toolsExpanded = !settingsPanel }
+        settingsPanel.toggle()
+        buildKeys()
     }
 
     private func buildAppearancePanel() {
@@ -596,11 +609,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stack.addArrangedSubview(row([
             ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
             ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
-            ("Glass", { [weak self] in KeyboardPreferences.usesGlass.toggle(); self?.buildKeys() })
+            (KeyboardPreferences.glassEnabled ? "Glass: On" : "Glass: Off", { [weak self] in
+                KeyboardPreferences.setGlassEnabled(!KeyboardPreferences.glassEnabled); self?.buildKeys()
+            })
         ]))
         stack.addArrangedSubview(row([
             ("Opacity −", { [weak self] in KeyboardPreferences.keyOpacity -= 0.1; self?.buildKeys() }),
             ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
+        ]))
+        stack.addArrangedSubview(row([
+            (KeyboardPreferences.clearGlass ? "Clear glass" : "Frosted glass", { [weak self] in
+                KeyboardPreferences.clearGlass.toggle(); self?.buildKeys()
+            }),
+            ("Tint −", { [weak self] in KeyboardPreferences.glassTintStrength -= 0.04; self?.buildKeys() }),
+            ("Tint +", { [weak self] in KeyboardPreferences.glassTintStrength += 0.04; self?.buildKeys() })
         ]))
         let colors = UIStackView(arrangedSubviews: [
             colorControl("Background", set: { KeyboardPreferences.customBackground = $0 }),

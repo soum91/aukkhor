@@ -29,7 +29,6 @@ struct AukkhorHome: View {
     @State private var keyOpacity = Double(KeyboardPreferences.keyOpacity)
     @State private var keySpacing = Double(KeyboardPreferences.keySpacing)
     @State private var keyHeight = Double(KeyboardPreferences.keyHeight)
-    @State private var usesGlass = KeyboardPreferences.usesGlass
     @State private var oneHand = KeyboardPreferences.oneHandSide
     @State private var previewRevision = UUID()
     @State private var cornerRadius = Double(KeyboardPreferences.cornerRadius)
@@ -129,10 +128,7 @@ struct AukkhorHome: View {
                         Text("No key backgrounds").tag(2)
                     }
                     .onChange(of: keycapStyle) { KeyboardPreferences.keycapStyle = $0 }
-                    Toggle("Glass material", isOn: $usesGlass)
-                        .onChange(of: usesGlass) { KeyboardPreferences.usesGlass = $0 }
-                    Text("Liquid Glass uses Apple's glass material on iOS 26 and later, with a blur fallback on older iOS. Removing key backgrounds also removes glass, borders and shadows from every key, including Space.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    glassControls
                     VStack(alignment: .leading) {
                         Text("Key roundness: \(Int(cornerRadius))")
                         Slider(value: $cornerRadius, in: 0...24, step: 1)
@@ -301,6 +297,35 @@ struct AukkhorHome: View {
                 try? await Task.sleep(for: .seconds(2))
             }
         }
+    }
+
+    @ViewBuilder private var glassControls: some View {
+        Toggle("Whole keyboard glass", isOn: Binding(
+            get: { KeyboardPreferences.glassEnabled },
+            set: { enabled in
+                KeyboardPreferences.setGlassEnabled(enabled)
+                keyboardPreset = KeyboardPreferences.preset
+                previewRevision = UUID()
+            }))
+        if KeyboardPreferences.glassEnabled {
+            Picker("Glass appearance", selection: Binding(
+                get: { KeyboardPreferences.clearGlass },
+                set: { KeyboardPreferences.clearGlass = $0 })) {
+                Text("Clear").tag(true)
+                Text("Frosted").tag(false)
+            }
+            VStack(alignment: .leading) {
+                Text("Glass tint: \(Int(KeyboardPreferences.glassTintStrength * 100))%")
+                Slider(value: Binding(
+                    get: { Double(KeyboardPreferences.glassTintStrength) },
+                    set: { KeyboardPreferences.glassTintStrength = CGFloat($0) }), in: 0...0.5)
+            }
+            Toggle("Glass touch response", isOn: Binding(
+                get: { KeyboardPreferences.interactiveGlass },
+                set: { KeyboardPreferences.interactiveGlass = $0 }))
+        }
+        Text("Glass covers the keyboard surface even with Keycaps: None. Background and accent colors remain customizable. Native glass requires iOS 26 or later; older iOS uses blur. Reduce Transparency uses the solid theme background.")
+            .font(.caption).foregroundStyle(.secondary)
     }
 
     private func themeHex(_ color: Color) -> String {

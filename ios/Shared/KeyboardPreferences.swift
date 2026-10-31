@@ -70,6 +70,23 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardUsesGlass") as? Bool ?? false }
         set { data.set(newValue, forKey: "keyboardUsesGlass") }
     }
+    static var glassEnabled: Bool { preset == .liquidGlass || usesGlass }
+    static func setGlassEnabled(_ enabled: Bool) {
+        usesGlass = enabled
+        if !enabled && preset == .liquidGlass { preset = .custom }
+    }
+    static var clearGlass: Bool {
+        get { data.object(forKey: "keyboardClearGlass") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardClearGlass") }
+    }
+    static var glassTintStrength: CGFloat {
+        get { CGFloat(data.object(forKey: "keyboardGlassTint") as? Double ?? 0.08) }
+        set { data.set(Double(max(0, min(0.5, newValue))), forKey: "keyboardGlassTint") }
+    }
+    static var interactiveGlass: Bool {
+        get { data.object(forKey: "keyboardInteractiveGlass") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardInteractiveGlass") }
+    }
     static var cornerRadius: CGFloat {
         get { CGFloat(data.object(forKey: "keyboardCornerRadius") as? Double ?? 7) }
         set { data.set(Double(newValue), forKey: "keyboardCornerRadius") }
@@ -226,6 +243,35 @@ struct KeyboardPalette {
     }
 }
 
+
+// The canvas material is independent of keycap rendering. No opaque layer is
+// placed behind this effect, so clear glass can sample the available backdrop.
+@MainActor enum KeyboardCanvasAppearance {
+    static func apply(to effectView: UIVisualEffectView, surface: UIView,
+                      palette: KeyboardPalette,
+                      reducedTransparency: Bool = UIAccessibility.isReduceTransparencyEnabled) {
+        effectView.isHidden = false // Keys live in its contentView, even with glass off.
+        effectView.alpha = 1
+        effectView.backgroundColor = .clear
+        effectView.contentView.backgroundColor = .clear
+        effectView.isUserInteractionEnabled = true
+        guard KeyboardPreferences.glassEnabled, !reducedTransparency else {
+            effectView.effect = nil
+            surface.backgroundColor = palette.background
+            return
+        }
+        surface.backgroundColor = .clear
+        if #available(iOS 26.0, *) {
+            let material = UIGlassEffect(style: KeyboardPreferences.clearGlass ? .clear : .regular)
+            material.isInteractive = KeyboardPreferences.interactiveGlass
+            let tint = KeyboardPreferences.glassTintStrength
+            material.tintColor = tint > 0 ? palette.accent.withAlphaComponent(tint) : nil
+            effectView.effect = material
+        } else {
+            effectView.effect = UIBlurEffect(style: .systemUltraThinMaterial)
+        }
+    }
+}
 
 // Used by every key, including Space, actions and suggestion candidates.
 enum KeyboardKeyAppearance {

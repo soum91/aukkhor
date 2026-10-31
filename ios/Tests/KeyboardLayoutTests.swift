@@ -2,6 +2,25 @@ import XCTest
 import UIKit
 @testable import Aukkhor
 
+private final class GlassTestBackdrop: UIView {
+    override func draw(_ rect: CGRect) {
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+        let colors = ["#143B68", "#16716F", "#5B327E", "#955332", "#17314A", "#4E315E"]
+        let width = bounds.width / CGFloat(colors.count)
+        for (index, hex) in colors.enumerated() {
+            context.setFillColor(UIColor(keyboardHex: hex).cgColor)
+            context.fill(CGRect(x: CGFloat(index) * width, y: 0, width: width + 1, height: bounds.height))
+        }
+        context.setStrokeColor(UIColor.white.withAlphaComponent(0.35).cgColor)
+        context.setLineWidth(3)
+        for y in stride(from: CGFloat(25), to: bounds.height, by: 45) {
+            context.move(to: CGPoint(x: 0, y: y))
+            context.addLine(to: CGPoint(x: bounds.width, y: y + 25))
+        }
+        context.strokePath()
+    }
+}
+
 private final class KeyboardHostField: UITextField {
     var suppliedKeyboard: UIInputViewController?
     override var inputViewController: UIInputViewController? { suppliedKeyboard }
@@ -12,14 +31,30 @@ private final class KeyboardHostField: UITextField {
         (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
     }
 
-    private func capture(_ keyboard: KeyboardViewController, name: String) {
+    private func capture(_ keyboard: KeyboardViewController, name: String, patternedBackdrop: Bool = false) {
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
             XCTFail("No window scene for on-screen keyboard evidence")
             return
         }
         let window = UIWindow(windowScene: scene)
         window.frame = keyboard.view.frame
-        window.rootViewController = keyboard
+        if patternedBackdrop {
+            let host = UIViewController()
+            host.view.frame = window.bounds
+            let pattern = GlassTestBackdrop(frame: window.bounds)
+            pattern.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            host.view.addSubview(pattern)
+            if keyboard.parent != nil {
+                keyboard.willMove(toParent: nil)
+                keyboard.view.removeFromSuperview()
+                keyboard.removeFromParent()
+            }
+            host.addChild(keyboard)
+            host.view.addSubview(keyboard.view)
+            keyboard.view.frame = window.bounds
+            keyboard.didMove(toParent: host)
+            window.rootViewController = host
+        } else { window.rootViewController = keyboard }
         window.isHidden = false
         keyboard.view.layoutIfNeeded()
         let rendered = UIGraphicsImageRenderer(bounds: keyboard.view.bounds).image { _ in
@@ -251,6 +286,76 @@ private final class KeyboardHostField: UITextField {
         let updatedQ = try XCTUnwrap(buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
         XCTAssertFalse(q === updatedQ, "Changed preferences must still refresh on the next appearance")
         XCTAssertFalse(updatedQ.subviews.contains { $0 is UIVisualEffectView })
+    }
+
+    func testCanvasGlassSurvivesKeycapRemovalAndSettingsPanel() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("Native glass requires the iOS 26+ runtime") }
+        let oldPreset = KeyboardPreferences.preset
+        let oldStyle = KeyboardPreferences.keycapStyle
+        let oldGlass = KeyboardPreferences.usesGlass
+        let oldClear = KeyboardPreferences.clearGlass
+        let oldTint = KeyboardPreferences.glassTintStrength
+        let oldInteractive = KeyboardPreferences.interactiveGlass
+        let oldSide = KeyboardPreferences.oneHandSide
+        defer {
+            KeyboardPreferences.preset = oldPreset
+            KeyboardPreferences.keycapStyle = oldStyle
+            KeyboardPreferences.usesGlass = oldGlass
+            KeyboardPreferences.clearGlass = oldClear
+            KeyboardPreferences.glassTintStrength = oldTint
+            KeyboardPreferences.interactiveGlass = oldInteractive
+            KeyboardPreferences.oneHandSide = oldSide
+        }
+        KeyboardPreferences.preset = .custom
+        KeyboardPreferences.usesGlass = true
+        KeyboardPreferences.keycapStyle = 2
+        KeyboardPreferences.oneHandSide = 2
+        KeyboardPreferences.glassTintStrength = 0.08
+        KeyboardPreferences.interactiveGlass = true
+        func canvas(in view: UIView) -> UIVisualEffectView? {
+            if let effect = view as? UIVisualEffectView,
+               effect.accessibilityIdentifier == "keyboard.canvasGlass" { return effect }
+            return view.subviews.compactMap { canvas(in: $0) }.first
+        }
+        for clear in [true, false] {
+            KeyboardPreferences.clearGlass = clear
+            let keyboard = KeyboardViewController()
+            keyboard.isPreview = true
+            keyboard.loadViewIfNeeded()
+            keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: KeyboardPreferences.typingHeight)
+            keyboard.view.layoutIfNeeded()
+            let glass = try XCTUnwrap(canvas(in: keyboard.view))
+            let native = try XCTUnwrap(glass.effect as? UIGlassEffect)
+            XCTAssertTrue(native.isInteractive)
+            XCTAssertEqual(glass.alpha, 1)
+            let surface = try XCTUnwrap(keyboard.view.subviews.first { $0.accessibilityIdentifier == "keyboard.surface" })
+            XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0,
+                           "An opaque canvas would hide the refracted backdrop")
+            for button in buttons(in: keyboard.view) {
+                XCTAssertEqual(button.backgroundColor?.cgColor.alpha ?? 0, 0)
+                XCTAssertFalse(button.subviews.contains { $0 is UIVisualEffectView })
+            }
+            let q = try XCTUnwrap(buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
+            keyboard.tapShift()
+            XCTAssertTrue(native === glass.effect)
+            XCTAssertTrue(q === buttons(in: keyboard.view).first { $0.title(for: .normal) == "Q" })
+            capture(keyboard, name: clear ? "canvas-clear-no-keycaps" : "canvas-frosted-no-keycaps",
+                    patternedBackdrop: true)
+            keyboard.toggleAppearancePanel()
+            keyboard.view.frame.size.height = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
+            keyboard.view.layoutIfNeeded()
+            XCTAssertTrue(glass === canvas(in: keyboard.view))
+            XCTAssertTrue(glass.effect is UIGlassEffect)
+            capture(keyboard, name: clear ? "settings-clear-no-keycaps" : "settings-frosted-no-keycaps",
+                    patternedBackdrop: true)
+            KeyboardCanvasAppearance.apply(to: glass, surface: surface,
+                                           palette: KeyboardPalette.selected(dark: true), reducedTransparency: true)
+            XCTAssertNil(glass.effect)
+            XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 0, 1)
+        }
+        KeyboardPreferences.preset = .liquidGlass
+        KeyboardPreferences.setGlassEnabled(false)
+        XCTAssertFalse(KeyboardPreferences.glassEnabled, "The Off control must also work from the Liquid Glass preset")
     }
 
     func testGlassAndSpaceUseSameAppearance() {

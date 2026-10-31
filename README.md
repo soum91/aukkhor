@@ -4,6 +4,13 @@ Native iPhone keyboard with English, phonetic Bangla, and Bangla layouts, plus a
 
 A native iOS custom keyboard and separate Windows companion. The app is a new project, not a Drift dependency.
 
+## Whole keyboard glass
+
+- Native `UIGlassEffect` now covers the entire keyboard and settings surface, including when **Keycaps: None** is selected. Keycap removal still removes every individual key fill, border, shadow and material.
+- Clear and Frosted canvas styles, separate glass tint strength, and optional native touch response are available in theme settings. The keyboard panel also offers Clear/Frosted and Tint −/+ controls.
+- Glass mode removes the opaque background beneath the canvas effect and avoids an extra system blur layer. Colors and local photo backgrounds can still be customized. Solid themes remain available with Glass off, and Reduce Transparency uses the solid theme background.
+- The native canvas view and key views persist during ordinary typing. Tests cover glass with no keycaps, both canvas styles, the settings panel, accessibility fallback and retained view identity. Visual evidence uses a patterned backdrop to inspect native transparency and edge treatment; what is visible behind a keyboard in another app remains subject to the iOS host compositor.
+
 ## Hosted keyboard padding and latency
 
 - The extension now supplies a self-sizing `UIInputView` with an explicit fitting size, a transparent root and a rounded background surface. Keyboard content has no extra vertical inset. The native globe band remains owned by iOS.
