@@ -431,7 +431,11 @@ private struct KeyboardThemePreview: UIViewControllerRepresentable {
         controller.isPreview = true
         return controller
     }
+    final class Coordinator { var revision: UUID? }
+    func makeCoordinator() -> Coordinator { Coordinator() }
     func updateUIViewController(_ controller: KeyboardViewController, context: Context) {
+        guard context.coordinator.revision != revision else { return }
+        context.coordinator.revision = revision
         controller.reloadAppearance()
     }
 }

@@ -71,8 +71,9 @@ enum KeyboardPreferences {
         set { data.set(Double(newValue), forKey: "keyboardCornerRadius") }
     }
     static var typingHeight: CGFloat {
-        // Suggestion strip + four typing rows + globe footer + six row gaps/padding.
-        keyHeight * 5 + 74 + (numberRow ? keyHeight + 7 : 0)
+        // Four typing rows + compact controls/suggestions + gaps/padding.
+        // iOS owns its bottom globe/safe-area strip; do not duplicate that row.
+        keyHeight * 4 + 56 + (numberRow ? keyHeight + 6 : 0)
     }
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }
@@ -264,10 +265,8 @@ enum KeyboardKeyAppearance {
 final class KeyboardButton: UIButton {
     override func layoutSubviews() {
         super.layoutSubviews()
-        if let backdrop = subviews.first(where: { $0.tag == 9401 }) {
+        if let backdrop = subviews.first(where: { $0.tag == 9401 }), subviews.first !== backdrop {
             sendSubviewToBack(backdrop)
         }
-        if let imageView { bringSubviewToFront(imageView) }
-        if let titleLabel { bringSubviewToFront(titleLabel) }
     }
 }

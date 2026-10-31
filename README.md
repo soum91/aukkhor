@@ -4,9 +4,16 @@ Native iPhone keyboard with English, phonetic Bangla, and Bangla layouts, plus a
 
 A native iOS custom keyboard and separate Windows companion. The app is a new project, not a Drift dependency.
 
+## Compact height and typing stability
+
+- Removed the extra full-height utility footer. The default typing area is 228 points without numbers and 277 with numbers, down from 289/339; iOS adds its own bottom controls.
+- Shift, caps lock and automatic capitalization update the existing letter buttons. They no longer rebuild all glass effects or reload the background photo while typing.
+- Status messages overlay the top strip instead of moving typing targets. Candidate updates use plain text controls, and app preview renders only when its revision changes.
+- Simulator coverage includes number-row on/off, all handedness modes, both system-globe states, material identity across Shift and stable key positions when status messages appear.
+
 ## Keyboard layout and theme update
 
-- Native-style QWERTY geometry with equal letter widths, staggered second row, Shift and Delete beside row three, wide Space, 123/emoji/Return and a globe footer with Apple's input-mode menu.
+- Native-style QWERTY geometry with equal letter widths, staggered second row, Shift and Delete beside row three, wide Space and 123/emoji/Return. Language, one-hand and settings controls share a compact top strip. A globe is shown only when iOS requests an input switcher; the system bottom strip is not duplicated.
 - Left/Full/Right layout menu. Tools sit in the unused strip opposite the typing hand; full-width mode can open the rail using ⚙.
 - Every key uses one appearance renderer. No key backgrounds removes fill, glass, outline and shadow, including Space, tools and suggestions.
 - Apple's UIGlassEffect on iOS 26+, blur fallback on iOS 16–18, and Reduce Transparency support. Custom colors for background, letters, actions, text and accent; opacity, radius, spacing, height and photo controls.
