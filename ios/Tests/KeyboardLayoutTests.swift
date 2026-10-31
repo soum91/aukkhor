@@ -146,17 +146,20 @@ private final class KeyboardHostField: UITextField {
 
     func testCompactControlsAndStableTypingViews() {
         let oldHeight = KeyboardPreferences.keyHeight
+        let oldScale = KeyboardPreferences.heightScale
         let oldNumbers = KeyboardPreferences.numberRow
         defer {
             KeyboardPreferences.keyHeight = oldHeight
+            KeyboardPreferences.heightScale = oldScale
             KeyboardPreferences.numberRow = oldNumbers
         }
         KeyboardPreferences.keyHeight = 43
+        KeyboardPreferences.heightScale = 0.9
         KeyboardPreferences.numberRow = false
         KeyboardPreferences.oneHandSide = 0
         KeyboardPreferences.preset = .liquidGlass
         KeyboardPreferences.keycapStyle = 0
-        XCTAssertEqual(KeyboardPreferences.typingHeight, 220)
+        XCTAssertEqual(KeyboardPreferences.typingHeight, 196)
         for needsSwitcher in [false, true] {
             let keyboard = KeyboardViewController()
             keyboard.isPreview = true
@@ -187,7 +190,9 @@ private final class KeyboardHostField: UITextField {
                            "Status messages must not shift typing targets")
         }
         KeyboardPreferences.numberRow = true
-        XCTAssertEqual(KeyboardPreferences.typingHeight, 269)
+        XCTAssertEqual(KeyboardPreferences.typingHeight, 239)
+        KeyboardPreferences.heightScale = 1
+        XCTAssertEqual(KeyboardPreferences.typingHeight, 259, "Height control must resize the entire row stack")
     }
 
     func testSelfSizingKeyboardInsideResponderHost() async throws {
@@ -244,7 +249,7 @@ private final class KeyboardHostField: UITextField {
         }
         XCTAssertTrue(rendered, "Hosted keyboard evidence must contain a completed screen render")
         XCTAssertGreaterThan(image.size.width, 250)
-        XCTAssertGreaterThan(image.size.height, 200)
+        XCTAssertGreaterThan(image.size.height, 180)
         let attachment = XCTAttachment(image: image)
         attachment.name = "hosted-full-black-with-numbers"
         attachment.lifetime = .keepAlways

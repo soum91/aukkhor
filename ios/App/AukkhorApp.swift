@@ -28,6 +28,7 @@ struct AukkhorHome: View {
     @State private var textColor = Color(UIColor(keyboardHex: KeyboardPreferences.customForeground))
     @State private var keyOpacity = Double(KeyboardPreferences.keyOpacity)
     @State private var keySpacing = Double(KeyboardPreferences.keySpacing)
+    @State private var heightScale = Double(KeyboardPreferences.heightScale)
     @State private var keyHeight = Double(KeyboardPreferences.keyHeight)
     @State private var oneHand = KeyboardPreferences.oneHandSide
     @State private var previewRevision = UUID()
@@ -139,6 +140,12 @@ struct AukkhorHome: View {
                         Text("Key spacing: \(Int(keySpacing))")
                         Slider(value: $keySpacing, in: 2...10, step: 1)
                             .onChange(of: keySpacing) { KeyboardPreferences.keySpacing = CGFloat($0) }
+                        Text("Keyboard height: \(Int(heightScale * 100))%")
+                        Slider(value: $heightScale, in: 0.85...1.15, step: 0.05)
+                            .onChange(of: heightScale) {
+                                KeyboardPreferences.heightScale = CGFloat($0)
+                                previewRevision = UUID()
+                            }
                         Text("Key height: \(Int(keyHeight))")
                         Slider(value: $keyHeight, in: 36...56, step: 1)
                             .onChange(of: keyHeight) { KeyboardPreferences.keyHeight = CGFloat($0) }

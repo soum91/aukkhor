@@ -62,6 +62,12 @@ enum KeyboardPreferences {
         get { CGFloat(data.object(forKey: "keyboardKeyHeight") as? Double ?? 43) }
         set { data.set(Double(max(36, min(56, newValue))), forKey: "keyboardKeyHeight") }
     }
+    static var heightScale: CGFloat {
+        get { CGFloat(data.object(forKey: "keyboardHeightScale") as? Double ?? 0.9) }
+        set { data.set(Double(max(0.85, min(1.15, newValue))), forKey: "keyboardHeightScale") }
+    }
+    static var rowHeight: CGFloat { (keyHeight * heightScale).rounded() }
+    static let rowGap: CGFloat = 4
     static var oneHandSide: Int {
         get { data.integer(forKey: "keyboardOneHandSide") }
         set { data.set(max(0, min(2, newValue)), forKey: "keyboardOneHandSide") }
@@ -92,9 +98,10 @@ enum KeyboardPreferences {
         set { data.set(Double(newValue), forKey: "keyboardCornerRadius") }
     }
     static var typingHeight: CGFloat {
-        // Four typing rows + compact controls/suggestions + gaps/padding.
-        // iOS owns its bottom globe/safe-area strip; do not duplicate that row.
-        keyHeight * 4 + 48 + (numberRow ? keyHeight + 6 : 0)
+        // Exact row stack height, with no footer or bottom padding.
+        // The system globe strip sits outside this content area.
+        let rows: CGFloat = numberRow ? 5 : 4
+        return 24 + rows * (rowHeight + rowGap)
     }
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }

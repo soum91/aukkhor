@@ -123,7 +123,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             backgroundImageView.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         stack.axis = .vertical
-        stack.spacing = 6
+        stack.spacing = KeyboardPreferences.rowGap
         contentStack.axis = .horizontal
         contentStack.spacing = 6
         contentStack.translatesAutoresizingMaskIntoConstraints = false
@@ -279,7 +279,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         row.distribution = .fillEqually
         row.spacing = KeyboardPreferences.keySpacing
         for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1)) }
-        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.keyHeight).isActive = true
+        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         return row
     }
 
@@ -536,7 +536,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let bottom = UIStackView()
         bottom.axis = .horizontal
         bottom.spacing = KeyboardPreferences.keySpacing
-        bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.keyHeight).isActive = true
+        bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         for (label, action) in bottomControls {
             let button = makeButton(label, action: action)
             bottom.addArrangedSubview(button)
