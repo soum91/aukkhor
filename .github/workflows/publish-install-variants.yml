@@ -1,4 +1,4 @@
-name: Publish all Aukkhor diagnostic IPAs to FlareStore
+name: Publish Aukkhor keyboard IPA to FlareStore
 on:
   workflow_dispatch:
   workflow_run:
@@ -14,7 +14,7 @@ permissions:
   contents: write
   actions: read
 concurrency:
-  group: aukkhor-diagnostic-publish
+  group: aukkhor-keyboard-publish
   cancel-in-progress: false
 jobs:
   publish:
@@ -47,30 +47,12 @@ jobs:
           name: Aukkhor-iOS-unsigned-${{ steps.build.outputs.number }}
           github-token: ${{ github.token }}
           path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ steps.build.outputs.id }}
-          name: Aukkhor-iOS-compat-${{ steps.build.outputs.number }}
-          github-token: ${{ github.token }}
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ steps.build.outputs.id }}
-          name: Aukkhor-iOS-keyboard-only-${{ steps.build.outputs.number }}
-          github-token: ${{ github.token }}
-          path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          run-id: ${{ steps.build.outputs.id }}
-          name: Aukkhor-iOS-standalone-probe-${{ steps.build.outputs.number }}
-          github-token: ${{ github.token }}
-          path: dist
-      - name: Validate all four IPA structures
+      - name: Validate host and keyboard extension
         env:
           BUILD: ${{ steps.build.outputs.number }}
         run: |
           python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode release
-      - name: Upload both diagnostic variants to existing release or stage direct files
+      - name: Publish only keyboard-enabled IPA
         id: distribution
         env:
           GH_TOKEN: ${{ github.token }}
@@ -81,16 +63,13 @@ jobs:
           MODE=direct
           if gh release view "$TAG" >/dev/null 2>&1; then
             if gh release upload "$TAG" \
-              dist/Aukkhor-keyboard-only-unsigned.ipa \
-              dist/Aukkhor-standalone-probe-unsigned.ipa \
-              dist/Aukkhor-compat-unsigned.ipa \
               dist/Aukkhor-unsigned.ipa --clobber; then
               MODE=release
             fi
           fi
           if [ "$MODE" = direct ]; then
             mkdir -p "downloads/$TAG"
-            cp dist/*.ipa "downloads/$TAG/"
+            cp dist/Aukkhor-unsigned.ipa "downloads/$TAG/"
             echo "::warning::GitHub release assets unavailable; publishing verified IPAs as repository files."
           fi
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
@@ -106,10 +85,10 @@ jobs:
           git add repo.json source.json
           if [ "$MODE" = direct ]; then
             git add -f "downloads/v0.2.0.$BUILD/"*.ipa
-            test "$(git ls-files "downloads/v0.2.0.$BUILD/"*.ipa | wc -l)" -eq 4
+            test -f "downloads/v0.2.0.$BUILD/Aukkhor-unsigned.ipa"
           fi
           git diff --cached --quiet && exit 0
-          git commit -m "catalog: expose four Aukkhor installation variants 0.2.0.$BUILD"
+          git commit -m "catalog: publish only Aukkhor keyboard 0.2.0.$BUILD"
           for attempt in 1 2 3; do
             git fetch origin main
             git rebase origin/main
