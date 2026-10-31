@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish all audited Aukkhor iOS #12 signing-test variants in FlareStore JSON.
+"""Publish all four audited Aukkhor iOS signing-test variants in FlareStore JSON.
 
 Never falsify a bundle ID. Three variants of Aukkhor intentionally share the
 same app ID, so they replace each other; standalone probe has a distinct ID.
