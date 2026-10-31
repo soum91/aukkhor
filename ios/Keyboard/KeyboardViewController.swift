@@ -52,6 +52,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let backgroundImageView = UIImageView()
     private let impact = UIImpactFeedbackGenerator(style: .light)
     private var typingOptions = TypingOptions()
+    private var lastAppearanceSignature: String?
     private var candidateButtons: [UIButton] = []
     private var candidateValues = [String](repeating: "", count: 3)
     private let suggestionHeading = UILabel()
@@ -173,7 +174,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        if isViewLoaded { buildKeys() } // Reload preferences changed in the host app.
+        if isViewLoaded {
+            if lastAppearanceSignature != KeyboardPreferences.renderingSignature {
+                oneHandSide = KeyboardPreferences.oneHandSide
+                buildKeys()
+            }
+            impact.prepare()
+        }
     }
 
     override func viewWillLayoutSubviews() {
@@ -463,6 +470,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildKeys() {
+        lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         suggestionWork?.cancel()
         suggestionGeneration += 1

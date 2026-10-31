@@ -217,6 +217,37 @@ private final class KeyboardHostField: UITextField {
         XCTAssertTrue(candidateButtons.allSatisfy(\.isHidden), "An older lookup must not repaint after clearing input")
     }
 
+    func testReopeningUnchangedKeyboardKeepsButtons() throws {
+        let oldStyle = KeyboardPreferences.keycapStyle
+        let oldPreset = KeyboardPreferences.preset
+        let oldSide = KeyboardPreferences.oneHandSide
+        defer {
+            KeyboardPreferences.keycapStyle = oldStyle
+            KeyboardPreferences.preset = oldPreset
+            KeyboardPreferences.oneHandSide = oldSide
+        }
+        KeyboardPreferences.keycapStyle = 0
+        KeyboardPreferences.preset = .liquidGlass
+        KeyboardPreferences.oneHandSide = 0
+        let keyboard = KeyboardViewController()
+        keyboard.isPreview = true
+        keyboard.loadViewIfNeeded()
+        let q = try XCTUnwrap(buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
+        for _ in 0..<2 {
+            keyboard.beginAppearanceTransition(true, animated: false)
+            keyboard.endAppearanceTransition()
+            XCTAssertTrue(q === buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
+            keyboard.beginAppearanceTransition(false, animated: false)
+            keyboard.endAppearanceTransition()
+        }
+        KeyboardPreferences.keycapStyle = 2
+        keyboard.beginAppearanceTransition(true, animated: false)
+        keyboard.endAppearanceTransition()
+        let updatedQ = try XCTUnwrap(buttons(in: keyboard.view).first { $0.title(for: .normal) == "q" })
+        XCTAssertFalse(q === updatedQ, "Changed preferences must still refresh on the next appearance")
+        XCTAssertFalse(updatedQ.subviews.contains { $0 is UIVisualEffectView })
+    }
+
     func testGlassAndSpaceUseSameAppearance() {
         KeyboardPreferences.oneHandSide = 0
         KeyboardPreferences.preset = .liquidGlass

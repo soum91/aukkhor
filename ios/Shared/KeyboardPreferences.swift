@@ -22,6 +22,10 @@ enum KeyboardPreset: String, CaseIterable, Identifiable {
 
 enum KeyboardPreferences {
     private static var data: UserDefaults { AukkhorSettings.defaults }
+    static var renderingSignature: String {
+        data.dictionaryRepresentation().filter { $0.key.hasPrefix("keyboard") }
+            .sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: "|")
+    }
     static var preset: KeyboardPreset {
         get { KeyboardPreset(rawValue: data.string(forKey: "keyboardPreset") ?? "system") ?? .system }
         set { data.set(newValue.rawValue, forKey: "keyboardPreset") }
@@ -136,11 +140,13 @@ enum KeyboardPreferences {
                           userInfo: [NSLocalizedDescriptionKey: "Couldn't encode selected photo."])
         }
         try data.write(to: url, options: .atomic)
+        self.data.set(UUID().uuidString, forKey: "keyboardPhotoRevision")
     }
     static func removeBackgroundImage() throws {
         if let url = backgroundFile, FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
+        data.set(UUID().uuidString, forKey: "keyboardPhotoRevision")
     }
 }
 

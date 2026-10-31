@@ -8,7 +8,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 
 - The extension now supplies a self-sizing `UIInputView` with an explicit fitting size, a transparent root and a rounded background surface. Keyboard content has no extra vertical inset. The native globe band remains owned by iOS.
 - Candidate buttons are allocated once and reused. Lookup is coalesced on a background queue, with stale results rejected; dictionary normalization is indexed once. Text insertion is not deferred.
-- Typing options and the haptic generator are cached; ordinary keys use immediate highlight feedback instead of system-button fades.
+- Unchanged keyboard appearances reuse their existing view tree instead of rebuilding it twice during presentation. Typing options and the haptic generator are cached; ordinary keys use immediate highlight feedback instead of system-button fades.
 - Tests now present the keyboard through an actual responder host in addition to standalone geometry checks, and check that rapid prediction changes preserve button identity and cannot repaint stale results. Physical iPhone confirmation is still needed for the reported host-panel padding.
 
 ## Compact height and typing stability
