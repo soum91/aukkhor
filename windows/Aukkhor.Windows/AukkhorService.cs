@@ -68,11 +68,55 @@ internal sealed class AukkhorService(IAukkhorUi ui) : IAsyncDisposable
         failedPairings = 0;
     }
 
-    public static IEnumerable<(IPAddress Address, string Name)> Interfaces() =>
-        NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses.Select(a => (a.Address, n.Name)))
-            .Where(item => item.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork && IsPrivate(item.Address));
+    // Only offer real, reachable LAN interfaces. Windows often reports VMware
+    // VMnet1/VMnet8 before the actual Wi-Fi adapter, even though the virtual
+    // network cannot be reached from an iPhone on the household Wi-Fi.
+    // Sorting by active IPv4 gateway places the real Internet-facing LAN first.
+    private static readonly string[] VirtualAdapterLabels = {
+        "vmware", "virtualbox", "hyper-v", "vethernet", "wsl", "docker",
+        "virtual adapter", "virtual ethernet", "wi-fi direct", "wifi direct",
+        "tap-windows", "openvpn", "wireguard", "tailscale", "zerotier",
+        "hamachi", "loopback", "bluetooth", "teredo", "npcap", "vpn adapter"
+    };
+
+    private static bool IsVirtual(NetworkInterface nic)
+    {
+        var label = (nic.Name + " " + nic.Description).ToLowerInvariant();
+        return VirtualAdapterLabels.Any(label.Contains);
+    }
+
+    public static IEnumerable<(IPAddress Address, string Name)> Interfaces()
+    {
+        var choices = new List<(IPAddress Address, string Name, int Score)>();
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus != OperationalStatus.Up ||
+                nic.NetworkInterfaceType is not
+                    (NetworkInterfaceType.Wireless80211 or NetworkInterfaceType.Ethernet or
+                     NetworkInterfaceType.GigabitEthernet) ||
+                IsVirtual(nic)) continue;
+            try
+            {
+                var props = nic.GetIPProperties();
+                bool hasGateway = props.GatewayAddresses.Any(g =>
+                    g.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork &&
+                    !g.Address.Equals(IPAddress.Any));
+                int score = (hasGateway ? 100 : 0) +
+                    (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ? 10 : 0);
+                foreach (var entry in props.UnicastAddresses)
+                {
+                    if (entry.Address.AddressFamily ==
+                        System.Net.Sockets.AddressFamily.InterNetwork && IsPrivate(entry.Address))
+                        choices.Add((entry.Address, nic.Name, score));
+                }
+            }
+            catch (NetworkInformationException) { /* Adapter disconnected during enumeration. */ }
+        }
+        return choices.OrderByDescending(x => x.Score)
+                      .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                      .Select(x => (x.Address, x.Name))
+                      .Distinct();
+    }
 
     private static bool IsPrivate(IPAddress ip)
     {
