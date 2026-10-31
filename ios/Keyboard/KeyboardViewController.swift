@@ -187,9 +187,30 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func addChars(_ chars: [String]) {
-        stack.addArrangedSubview(oneHandRow(row(chars.map { letter in
+        let keys = row(chars.map { letter in
             (letter, { [weak self] in self?.type(letter) })
-        })))
+        })
+        // Match the staggered QWERTY geometry of the system keyboard.
+        // Insets belong outside the key row so every key retains equal touch width.
+        let englishLetters = !symbols && mode != .bangla &&
+            chars.allSatisfy { $0.count == 1 && $0.first?.isLetter == true }
+        let inset: CGFloat = englishLetters && chars.count == 9 ? 18 :
+            (englishLetters && chars.count == 7 ? 42 : 0)
+        if inset > 0 {
+            let wrapper = UIStackView()
+            wrapper.axis = .horizontal
+            wrapper.spacing = 0
+            let left = UIView()
+            let right = UIView()
+            left.widthAnchor.constraint(equalToConstant: inset).isActive = true
+            right.widthAnchor.constraint(equalToConstant: inset).isActive = true
+            wrapper.addArrangedSubview(left)
+            wrapper.addArrangedSubview(keys)
+            wrapper.addArrangedSubview(right)
+            stack.addArrangedSubview(oneHandRow(wrapper))
+        } else {
+            stack.addArrangedSubview(oneHandRow(keys))
+        }
     }
 
     private func oneHandRow(_ keys: UIStackView) -> UIView {
