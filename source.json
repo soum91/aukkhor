@@ -10,11 +10,21 @@
       "name": "Aukkhor",
       "bundleIdentifier": "dev.soum91.aukkhor",
       "developerName": "soum91",
-      "subtitle": "Keyboard, themes, clipboard and Windows companion",
+      "subtitle": "Aukkhor keyboard and companions · 0.2.0.15",
       "localizedDescription": "English, phonetic Bangla and direct Bangla keyboard with on-device themes, dictionary and speech tools, plus opt-in paired Windows clipboard/code handoff.",
       "category": "utilities",
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
+        {
+          "version": "0.2.0.15",
+          "buildVersion": "15",
+          "date": "2026-10-31",
+          "localizedDescription": "Full Aukkhor keyboard with English and Bangla input, Windows and Android TV companions, and Share extension. Unsigned IPA: FlareStore must sign the app and both embedded extensions.",
+          "changelog": "Rebuilt app and extensions with validated CFBundleDisplayName metadata.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.15/Aukkhor-unsigned.ipa",
+          "size": 1147153,
+          "minOSVersion": "16.0"
+        },
         {
           "version": "0.2.0.13",
           "buildVersion": "13",
@@ -64,26 +74,6 @@
           "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
           "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.9/Aukkhor-unsigned.ipa",
           "size": 1132883,
-          "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.8",
-          "buildVersion": "8",
-          "date": "2026-10-30",
-          "localizedDescription": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
-          "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Redesigned Aukkhor monogram icon with fused Latin A and Bengali অ. Unsigned IPA: sign with your own valid iOS provisioning profile.",
-          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.8/Aukkhor-unsigned.ipa",
-          "size": 1082157,
-          "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.7",
-          "buildVersion": "7",
-          "date": "2026-10-30",
-          "localizedDescription": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Unsigned IPA: sign with your own valid iOS provisioning profile.",
-          "changelog": "Preview build: English, phonetic Bangla and direct Bangla; theme presets and custom photo themes; clipboard controls, Siri Shortcuts, and Windows code sharing. Unsigned IPA: sign with your own valid iOS provisioning profile.",
-          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.7/Aukkhor-unsigned.ipa",
-          "size": 343119,
           "minOSVersion": "16.0"
         }
       ]
