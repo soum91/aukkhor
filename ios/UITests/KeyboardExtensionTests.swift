@@ -33,7 +33,11 @@ import XCTest
         settings.launch()
         XCTAssertTrue(tap("General", in: settings), "Open General settings")
         XCTAssertTrue(tap("Keyboard", in: settings), "Open Keyboard settings")
-        XCTAssertTrue(tap("Keyboards", in: settings), "Open the installed keyboard list")
+        // The enclosing page is also titled "Keyboards". Its navigation title
+        // is hittable, so select the actual Settings row by its stable ID.
+        let installedKeyboards = settings.cells["KEYBOARDS"]
+        XCTAssertTrue(installedKeyboards.waitForExistence(timeout: 8), "Find the installed keyboard list row")
+        installedKeyboards.tap()
         if !settings.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch.exists {
             XCTAssertTrue(tap("Add New Keyboard…", in: settings) || tap("Add New Keyboard...", in: settings),
                           "Open Add New Keyboard")
