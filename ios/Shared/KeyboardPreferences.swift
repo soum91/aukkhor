@@ -2,13 +2,15 @@ import Foundation
 import UIKit
 
 enum KeyboardPreset: String, CaseIterable, Identifiable {
-    case system, midnight, blossom, mint, sunset, highContrast, custom
+    case system, midnight, fullBlack, liquidGlass, blossom, mint, sunset, highContrast, custom
 
     var id: String { rawValue }
     var title: String {
         switch self {
         case .system: return "System"
         case .midnight: return "Midnight"
+        case .fullBlack: return "Full Black"
+        case .liquidGlass: return "Liquid Glass"
         case .blossom: return "Blossom"
         case .mint: return "Mint"
         case .sunset: return "Sunset"
@@ -35,6 +37,10 @@ enum KeyboardPreferences {
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardHaptics") }
+    }
+    static var keycapStyle: Int {
+        get { data.object(forKey: "keyboardKeycapStyle") as? Int ?? 0 }
+        set { data.set(max(0, min(2, newValue)), forKey: "keyboardKeycapStyle") }
     }
     static var keySounds: Bool {
         get { data.bool(forKey: "keyboardKeySounds") }
@@ -132,6 +138,16 @@ struct KeyboardPalette {
                          secondaryKey: UIColor(keyboardHex: "#394769"), foreground: .white,
                          muted: UIColor(keyboardHex: "#B3C0DF"), accent: UIColor(keyboardHex: "#91A8FF"),
                          border: UIColor(keyboardHex: "#546482"))
+        case .fullBlack:
+            return .init(background: .black, key: UIColor(keyboardHex: "#111111"),
+                         secondaryKey: UIColor(keyboardHex: "#202020"), foreground: .white,
+                         muted: UIColor(keyboardHex: "#A0A0A0"), accent: .white,
+                         border: UIColor(keyboardHex: "#333333"))
+        case .liquidGlass:
+            return .init(background: UIColor(keyboardHex: "#11131A"), key: UIColor(keyboardHex: "#353B48"),
+                         secondaryKey: UIColor(keyboardHex: "#4C5362"), foreground: .white,
+                         muted: UIColor(keyboardHex: "#D0D6E0"), accent: UIColor(keyboardHex: "#B4D8FF"),
+                         border: UIColor(keyboardHex: "#8994A8"))
         case .blossom:
             return .init(background: UIColor(keyboardHex: "#FFF0F5"), key: UIColor(keyboardHex: "#FFFFFF"),
                          secondaryKey: UIColor(keyboardHex: "#F8CEDB"), foreground: UIColor(keyboardHex: "#4B3041"),
