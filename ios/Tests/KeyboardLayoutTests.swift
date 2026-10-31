@@ -92,6 +92,13 @@ import UIKit
             XCTAssertTrue(button.subviews.contains { $0 is UIVisualEffectView })
             XCTAssertEqual(button.layer.cornerRadius, KeyboardPreferences.cornerRadius)
         }
+        for button in all where button.image(for: .normal) != nil {
+            if let backdropIndex = button.subviews.firstIndex(where: { $0 is UIVisualEffectView }),
+               let imageView = button.imageView,
+               let iconIndex = button.subviews.firstIndex(of: imageView) {
+                XCTAssertGreaterThan(iconIndex, backdropIndex, "Glass must stay behind symbols")
+            }
+        }
         capture(keyboard, name: "liquid-glass-keycaps")
     }
 }

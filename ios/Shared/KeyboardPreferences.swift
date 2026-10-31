@@ -258,3 +258,16 @@ enum KeyboardKeyAppearance {
         }
     }
 }
+
+// UIButton can insert its image view lazily during layout. Keep the material
+// beneath both label and symbol even after UIKit rebuilds those subviews.
+final class KeyboardButton: UIButton {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if let backdrop = subviews.first(where: { $0.tag == 9401 }) {
+            sendSubviewToBack(backdrop)
+        }
+        if let imageView { bringSubviewToFront(imageView) }
+        if let titleLabel { bringSubviewToFront(titleLabel) }
+    }
+}

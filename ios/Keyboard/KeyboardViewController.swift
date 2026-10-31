@@ -172,7 +172,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func makeButton(_ title: String, action: @escaping () -> Void,
                             foreground: UIColor = .label, weight: CGFloat = 1) -> UIButton {
-        let button = UIButton(type: .system)
+        let button = KeyboardButton(type: .system)
         button.setTitle(title, for: .normal)
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
                        "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
