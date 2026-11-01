@@ -382,13 +382,19 @@ private final class KeyboardHostField: UITextField {
         }
         XCTAssertEqual(candidateButtons.count, 3)
         keyboard.requestSuggestions(prefix: "he", phonetic: false, bangla: false)
-        try await Task.sleep(for: .milliseconds(300))
+        for _ in 0..<100 {
+            if candidateButtons.contains(where: { $0.title(for: .normal) == "hello" }) { break }
+            try await Task.sleep(for: .milliseconds(30))
+        }
         XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "hello" })
         for i in 0..<100 {
             keyboard.requestSuggestions(prefix: "h\(i)", phonetic: false, bangla: false)
         }
         keyboard.requestSuggestions(prefix: "key", phonetic: false, bangla: false)
-        try await Task.sleep(for: .milliseconds(300))
+        for _ in 0..<100 {
+            if candidateButtons.contains(where: { $0.title(for: .normal) == "keyboard" && !$0.isHidden }) { break }
+            try await Task.sleep(for: .milliseconds(30))
+        }
         XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "keyboard" && !$0.isHidden })
         let after = buttons(in: keyboard.view).filter {
             $0.accessibilityIdentifier?.hasPrefix("keyboard.candidate.") == true
