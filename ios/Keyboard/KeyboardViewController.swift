@@ -60,6 +60,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suggestionWork: DispatchWorkItem?
     private var suggestionGeneration = 0
     private var suggestionRequestKey: String?
+    private var contextRefreshWork: DispatchWorkItem?
+    private var contextRefreshGeneration = 0
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
     // Keep every control in a plain view above the decorative material. An
@@ -242,7 +244,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func feedback() {
-        if typingOptions.haptics { impact.impactOccurred(); impact.prepare() }
+        if typingOptions.haptics { impact.impactOccurred() }
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
 
@@ -434,7 +436,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
             ("Speak", { [weak self] in self?.speak() }),
-            ("📋", { [weak self] in self?.toggleClipboardPanel() }),
+            ("Clips", { [weak self] in self?.toggleClipboardPanel() }),
             ("⇥PC", { [weak self] in self?.sendClipboardToPC() }),
             ("PC⇤", { [weak self] in self?.getClipboardFromPC() }),
             ("↔", { [weak self] in self?.oneHandSide = 0; KeyboardPreferences.oneHandSide = 0; self?.toolsExpanded = false; self?.buildKeys() })
@@ -880,6 +882,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // Coalesce duplicate host callbacks and ignore stale results during fast typing.
     // Text insertion happens immediately; only optional candidate lookup is deferred.
     func requestSuggestions(prefix: String, phonetic: Bool, bangla: Bool) {
+        contextRefreshGeneration += 1
+        contextRefreshWork?.cancel()
         let key = "\(phonetic):\(bangla):\(prefix)"
         guard suggestionRequestKey != key else { return }
         suggestionRequestKey = key
@@ -901,6 +905,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func refreshSuggestions() {
+        contextRefreshGeneration += 1
+        let generation = contextRefreshGeneration
+        contextRefreshWork?.cancel()
         if emojiMode || clipboardPanel || settingsPanel || symbols || !typingOptions.suggestions {
             suggestionGeneration += 1
             suggestionWork?.cancel()
@@ -910,8 +917,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             setCandidates([], heading: heading)
             return
         }
-        let text = mode == .phonetic && !buffer.isEmpty ? buffer : currentWord()
-        requestSuggestions(prefix: text, phonetic: mode == .phonetic, bangla: mode == .bangla)
+        // Host context is cross-process. Coalesce callbacks and leave the key
+        // action before reading it; ordinary English insertion stays immediate.
+        suggestionGeneration += 1
+        suggestionWork?.cancel()
+        suggestionRequestKey = nil
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.contextRefreshGeneration == generation else { return }
+            let text = self.mode == .phonetic && !self.buffer.isEmpty ? self.buffer : self.currentWord()
+            self.requestSuggestions(prefix: text, phonetic: self.mode == .phonetic,
+                                    bangla: self.mode == .bangla)
+        }
+        contextRefreshWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.035, execute: work)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
@@ -1022,7 +1040,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             commitBuffer(); textDocumentProxy.insertText(value)
             recordClip(value); refreshSuggestions()
         }
-        else { show("Clipboard has no text") }
+        else if UIPasteboard.general.hasImages {
+            show("Image ready: touch and hold the app's text field, then Paste")
+        } else { show("Clipboard has no text") }
     }
 
     private func cut() {

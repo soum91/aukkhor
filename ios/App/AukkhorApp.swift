@@ -120,6 +120,7 @@ struct AukkhorHome: View {
     @State private var doubleSpace = KeyboardPreferences.doubleSpacePeriod
     @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
     @State private var selectedBackground: PhotosPickerItem?
+    @State private var selectedClipboardImage: PhotosPickerItem?
     @State private var themePhoto = KeyboardPreferences.backgroundImage
     @State private var backgroundStatus = ""
     @State private var tvHost = AukkhorTVSettings.host
@@ -318,6 +319,27 @@ struct AukkhorHome: View {
                 }
 
                 Section("Clipboard") {
+                    PhotosPicker(selection: $selectedClipboardImage, matching: .images) {
+                        Label("Copy screenshot or photo", systemImage: "photo.on.rectangle")
+                    }
+                    .onChange(of: selectedClipboardImage) { item in
+                        guard let item else { return }
+                        Task {
+                            do {
+                                guard let data = try await item.loadTransferable(type: Data.self),
+                                      let image = UIImage(data: data) else {
+                                    status = "Could not load the selected image."
+                                    selectedClipboardImage = nil
+                                    return
+                                }
+                                UIPasteboard.general.image = image
+                                status = "Image copied. In the destination app, touch and hold its text field and choose Paste."
+                            } catch { status = "Could not copy image: \(error.localizedDescription)" }
+                            selectedClipboardImage = nil
+                        }
+                    }
+                    Text("Choose an existing screenshot or photo to copy. Image pasting depends on the destination app; the keyboard Paste button inserts text only.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Enable tools in keyboard", isOn: $keyboardTools)
                         .onChange(of: keyboardTools) { AukkhorSettings.keyboardClipboardEnabled = $0 }
                     Toggle("Foreground sync while this app is open", isOn: $clipboardSync)
