@@ -19,8 +19,8 @@
           "version": "0.2.0.55",
           "buildVersion": "55",
           "date": "2026-11-01",
-          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+          "localizedDescription": "Build 55 adds experimental opt-in automatic screenshot copying through PhotoKit. Enable Automatically copy new screenshots in Aukkhor's Clipboard section, grant Photos access (full access needed for all new screenshots), and allow keyboard Full Access. Watches while app/keyboard is visible and checks again when reopened; only screenshots saved after enabling and within the last two minutes qualify. No background daemon or polling. Originals are copied without image decoding; iCloud-only and over-12-MB files are skipped. Repeated copies are deduplicated and clipboard changes during fetching are respected. Windows text sync no longer replaces an image clipboard. Shared App Group entitlement is needed to pass settings to the extension. Compilation and IPA audits passed; actual extension Photos permission/event delivery and device behavior remain unverified. Simulator tests were not rerun.",
+          "changelog": "Build 55 adds experimental opt-in automatic screenshot copying through PhotoKit. Enable Automatically copy new screenshots in Aukkhor's Clipboard section, grant Photos access (full access needed for all new screenshots), and allow keyboard Full Access. Watches while app/keyboard is visible and checks again when reopened; only screenshots saved after enabling and within the last two minutes qualify. No background daemon or polling. Originals are copied without image decoding; iCloud-only and over-12-MB files are skipped. Repeated copies are deduplicated and clipboard changes during fetching are respected. Windows text sync no longer replaces an image clipboard. Shared App Group entitlement is needed to pass settings to the extension. Compilation and IPA audits passed; actual extension Photos permission/event delivery and device behavior remain unverified. Simulator tests were not rerun.",
           "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.55/Aukkhor-unsigned.ipa",
           "size": 1270528,
           "minOSVersion": "16.0"
@@ -76,13 +76,13 @@
           "minOSVersion": "16.0"
         }
       ],
-      "version": "0.2.0.54",
-      "buildVersion": "54",
-      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.54/Aukkhor-unsigned.ipa",
-      "size": 1246787,
+      "version": "0.2.0.55",
+      "buildVersion": "55",
+      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.55/Aukkhor-unsigned.ipa",
+      "size": 1270528,
       "minOSVersion": "16.0",
       "versionDate": "2026-11-01",
-      "versionDescription": "Build 54 coalesces suggestion context reads outside immediate key actions and removes repeated haptic preparation per key. Renames the clipboard history control to Clips, distinct from Paste. Adds Copy screenshot or photo in the main app using the native Photos picker, copying the selected image to the system pasteboard. Keyboard Paste detects images and directs users to the destination app's Paste command; it cannot insert images through the text proxy. Retains shared glass background and lightweight keycaps. Compilation and exact IPA audits passed; simulator tests were not rerun and device responsiveness/image-pasting remain unverified. Previous suggestion-test failure remains unresolved."
+      "versionDescription": "Build 55 adds experimental opt-in automatic screenshot copying through PhotoKit. Enable Automatically copy new screenshots in Aukkhor's Clipboard section, grant Photos access (full access needed for all new screenshots), and allow keyboard Full Access. Watches while app/keyboard is visible and checks again when reopened; only screenshots saved after enabling and within the last two minutes qualify. No background daemon or polling. Originals are copied without image decoding; iCloud-only and over-12-MB files are skipped. Repeated copies are deduplicated and clipboard changes during fetching are respected. Windows text sync no longer replaces an image clipboard. Shared App Group entitlement is needed to pass settings to the extension. Compilation and IPA audits passed; actual extension Photos permission/event delivery and device behavior remain unverified. Simulator tests were not rerun."
     }
   ]
 }
