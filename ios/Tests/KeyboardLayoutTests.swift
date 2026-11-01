@@ -256,7 +256,7 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
-    func testSystemCanvasHasNoSeparatePanel() {
+    // Regression: build 48 looked correct but the effectless glass host swallowed physical taps.\n    func testSystemCanvasHasNoSeparatePanel() {
         let oldPreset = KeyboardPreferences.preset
         let oldStyle = KeyboardPreferences.keycapStyle
         let oldSeamless = KeyboardPreferences.seamlessBackground
