@@ -73,10 +73,12 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist"
           /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$APP/Info.plist" | grep -Fx iPhoneOS
       - name: Audit keyboard-only IPA before publishing
+        env:
+          EXPECTED_BUILD: ${{ github.run_number }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import plistlib, zipfile
+          import os, plistlib, zipfile
           with zipfile.ZipFile('Aukkhor-unsigned.ipa') as ipa:
               names=set(ipa.namelist())
               host='Payload/Aukkhor.app/Info.plist'
@@ -90,6 +92,8 @@ jobs:
               assert ext['NSExtension']['NSExtensionPointIdentifier']=='com.apple.keyboard-service'
               for name, info in [(host,root),(keyboard,ext)]:
                   assert str(info.get('CFBundleDisplayName','')).strip(), name
+                  assert str(info.get('CFBundleVersion')) == os.environ['EXPECTED_BUILD'], (name, info.get('CFBundleVersion'))
+                  assert info.get('CFBundleShortVersionString') == '0.2.0', (name, info.get('CFBundleShortVersionString'))
               print('Validated exactly one embedded keyboard extension')
           PY
       # Explicit one-off publication at the owner's request. Normal pushes still run both test stages.
