@@ -75,7 +75,14 @@
           "size": 1227710,
           "minOSVersion": "16.0"
         }
-      ]
+      ],
+      "version": "0.2.0.50",
+      "buildVersion": "50",
+      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.50/Aukkhor-unsigned.ipa",
+      "size": 1238939,
+      "minOSVersion": "16.0",
+      "versionDate": "2026-11-01",
+      "versionDescription": "Touch delivery fix: glass and photo backgrounds are decoration-only and can no longer intercept key presses. All keys, including Space and action keys, now live in a dedicated transparent interaction layer above the native iOS background. Regression coverage verifies the visible key is the actual hit-test target with keycaps present or removed and with the number row off or on. Background: iOS remains seamless and compact; Background: Custom retains glass, tint, and photo controls. Build and IPA metadata audits passed; the native layout and hit-target suite passed. Physical iPhone verification remains pending."
     }
   ]
 }
