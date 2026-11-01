@@ -220,6 +220,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Recreate the material there rather than retaining a detached backdrop.
         glassBackdrop.effect = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
+        if !isPreview, hasFullAccess { ScreenshotClipboard.shared.start() }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if !isPreview { ScreenshotClipboard.shared.stop() }
     }
 
     override func viewWillLayoutSubviews() {

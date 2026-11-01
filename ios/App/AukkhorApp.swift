@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import Photos
 
 @main struct AukkhorApp: App {
     var body: some Scene {
@@ -121,6 +122,7 @@ struct AukkhorHome: View {
     @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
     @State private var selectedBackground: PhotosPickerItem?
     @State private var selectedClipboardImage: PhotosPickerItem?
+    @State private var autoScreenshots = AukkhorSettings.defaults.bool(forKey: "autoScreenshotClipboard")
     @State private var themePhoto = KeyboardPreferences.backgroundImage
     @State private var backgroundStatus = ""
     @State private var tvHost = AukkhorTVSettings.host
@@ -319,6 +321,30 @@ struct AukkhorHome: View {
                 }
 
                 Section("Clipboard") {
+                    Toggle("Automatically copy new screenshots", isOn: $autoScreenshots)
+                        .onChange(of: autoScreenshots) { enabled in
+                            if !enabled {
+                                ScreenshotClipboard.enabled = false
+                                ScreenshotClipboard.shared.stop()
+                            } else {
+                                Task { @MainActor in
+                                    let permission = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                                    guard autoScreenshots else { return }
+                                    guard permission == .authorized || permission == .limited else {
+                                        autoScreenshots = false
+                                        status = "Photos access is needed to detect newly saved screenshots."
+                                        return
+                                    }
+                                    ScreenshotClipboard.enabled = true
+                                    ScreenshotClipboard.shared.start()
+                                    status = permission == .authorized
+                                        ? "New screenshots will be copied while Aukkhor is active or when its keyboard reopens."
+                                        : "Limited Photos access only detects screenshots you have allowed Aukkhor to read."
+                                }
+                            }
+                        }
+                    Text("Enable Photos access and keyboard Full Access once. Copies only newly saved screenshots from the last two minutes while Aukkhor or its keyboard is visible, or when reopened. Full Photos access is needed for all new screenshots. No continuous background service. Images stay on this device; files larger than 12 MB or available only in iCloud are skipped. A keyboard signer must preserve the shared App Group for this setting to reach the keyboard.")
+                        .font(.caption).foregroundStyle(.secondary)
                     PhotosPicker(selection: $selectedClipboardImage, matching: .images) {
                         Label("Copy screenshot or photo", systemImage: "photo.on.rectangle")
                     }
@@ -381,6 +407,11 @@ struct AukkhorHome: View {
             .sheet(item: $windowsPrompt) { prompt in
                 TVTypingSheet(prompt: prompt, destination: .windows)
             }
+        }
+        .task(id: autoScreenshots && scenePhase == .active) {
+            if autoScreenshots && scenePhase == .active {
+                ScreenshotClipboard.shared.start()
+            } else { ScreenshotClipboard.shared.stop() }
         }
         .task(id: clipboardSync && scenePhase == .active) {
             guard clipboardSync && scenePhase == .active else { return }
@@ -537,6 +568,9 @@ struct AukkhorHome: View {
     }
 
     private func syncOnce() async {
+        // The Windows companion currently syncs text only. Do not replace a
+        // freshly copied screenshot with remote text during its polling cycle.
+        guard !UIPasteboard.general.hasImages else { return }
         guard AukkhorKeychain.load() != nil else { return }
         do {
             let phone = UIPasteboard.general.string ?? ""

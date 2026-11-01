@@ -34,6 +34,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        NSPhotoLibraryUsageDescription: Aukkhor optionally reads newly saved screenshots to copy them automatically to your clipboard while its app or keyboard is active.
         NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
         UISupportedInterfaceOrientations:
@@ -64,6 +65,7 @@ targets:
         CFBundleName: 'Aukkhor Keyboard'
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSPhotoLibraryUsageDescription: Aukkhor optionally reads newly saved screenshots to copy them automatically to your clipboard while its app or keyboard is active.
         NSLocalNetworkUsageDescription: Aukkhor transfers clipboard text to your paired Windows PC on the local network.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
