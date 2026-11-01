@@ -19,8 +19,8 @@
           "version": "0.2.0.52",
           "buildVersion": "52",
           "date": "2026-11-01",
-          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+          "localizedDescription": "Build 52 improves key touch tolerance and disables the glide recognizer entirely when Glide is off. Compilation and app/keyboard IPA audits passed. The preceding build passed 9 native tests, including touch-gap and layout checks; the suggestion-update test failed. Published at the owner's request with that failure unresolved. Physical-device typing remains unverified.",
+          "changelog": "Adds six-point tolerance around key targets and chooses the nearest enabled key in small gaps. The Glide recognizer is fully disabled when Glide is off. Keeps the seamless native background. Compilation and exact bundle audits passed; 9 of 10 native tests passed in build 51, including the new touch tests. Suggestion-update test failure remains unresolved; end-to-end device typing is not verified.",
           "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.52/Aukkhor-unsigned.ipa",
           "size": 1242868,
           "minOSVersion": "16.0"
@@ -76,13 +76,13 @@
           "minOSVersion": "16.0"
         }
       ],
-      "version": "0.2.0.50",
-      "buildVersion": "50",
-      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.50/Aukkhor-unsigned.ipa",
-      "size": 1238939,
+      "version": "0.2.0.52",
+      "buildVersion": "52",
+      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.52/Aukkhor-unsigned.ipa",
+      "size": 1242868,
       "minOSVersion": "16.0",
       "versionDate": "2026-11-01",
-      "versionDescription": "Touch delivery fix: glass and photo backgrounds are decoration-only and can no longer intercept key presses. All keys, including Space and action keys, now live in a dedicated transparent interaction layer above the native iOS background. Regression coverage verifies the visible key is the actual hit-test target with keycaps present or removed and with the number row off or on. Background: iOS remains seamless and compact; Background: Custom retains glass, tint, and photo controls. Build and IPA metadata audits passed; the native layout and hit-target suite passed. Physical iPhone verification remains pending."
+      "versionDescription": "Adds six-point tolerance around key targets and chooses the nearest enabled key in small gaps. The Glide recognizer is fully disabled when Glide is off. Keeps the seamless native background. Compilation and exact bundle audits passed; 9 of 10 native tests passed in build 51, including the new touch tests. Suggestion-update test failure remains unresolved; end-to-end device typing is not verified."
     }
   ]
 }
