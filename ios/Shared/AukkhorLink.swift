@@ -5,12 +5,19 @@ import Security
 
 enum AukkhorSettings {
     static let group = "group.dev.soum91.aukkhor"
-    static let sharedSettingsAvailable = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
-    static let defaults: UserDefaults = {
+    static private(set) var sharedSettingsAvailable = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
+    static private(set) var defaults: UserDefaults = {
         // A suite can be constructed even when a sideload signer stripped its entitlement.
         // In that case use the process's persistent settings, adjustable in the keyboard.
         sharedSettingsAvailable ? (UserDefaults(suiteName: group) ?? .standard) : .standard
     }()
+    // Refresh at presentation/permission boundaries, never on every keypress.
+    static func refreshSharedSettings() {
+        let available = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group) != nil
+        guard available != sharedSettingsAvailable else { return }
+        sharedSettingsAvailable = available
+        defaults = available ? (UserDefaults(suiteName: group) ?? .standard) : .standard
+    }
     static var host: String {
         get { defaults.string(forKey: "pcHost") ?? "" }
         set { defaults.set(newValue, forKey: "pcHost") }

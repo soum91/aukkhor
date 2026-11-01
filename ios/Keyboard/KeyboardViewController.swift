@@ -1,5 +1,6 @@
 import UIKit
 import AVFoundation
+import Photos
 
 private enum InputMode: Int, CaseIterable {
     case english, phonetic, bangla
@@ -62,6 +63,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suggestionRequestKey: String?
     private var contextRefreshWork: DispatchWorkItem?
     private var contextRefreshGeneration = 0
+    private var deleteTimer: Timer?
+    private var deleteHeld = false
+    private var deleteTicks = 0
+    private var pendingReplacement: (original: String, inserted: String, document: UUID)?
+    private var suppressedReplacement: String?
+    #if DEBUG
+    var testingProxy: UITextDocumentProxy?
+    var testingReplacements: [String: String] {
+        get { replacements }
+        set { replacements = newValue }
+    }
+    override var textDocumentProxy: UITextDocumentProxy { testingProxy ?? super.textDocumentProxy }
+    func testingType(_ text: String) { type(text) }
+    func testingDelete() { backspace() }
+    func testingStartDelete() { startDelete() }
+    func testingStopDelete() { stopDelete() }
+    #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
     // Keep every control in a plain view above the decorative material. An
@@ -205,6 +223,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        AukkhorSettings.refreshSharedSettings()
         if isViewLoaded {
             if lastAppearanceSignature != KeyboardPreferences.renderingSignature {
                 oneHandSide = KeyboardPreferences.oneHandSide
@@ -216,15 +235,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        // An extension is attached to a remote keyboard window after viewDidLoad.
-        // Recreate the material there rather than retaining a detached backdrop.
-        glassBackdrop.effect = nil
-        KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
+        // Reuse the canvas installed by buildKeys instead of restarting its
+        // material animations every time the host presents the keyboard.
         if !isPreview, hasFullAccess { ScreenshotClipboard.shared.start() }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        stopDelete()
         if !isPreview { ScreenshotClipboard.shared.stop() }
     }
 
@@ -307,7 +325,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.setTitleColor(foreground == .label ? palette.foreground : foreground, for: .normal)
         if surface { KeyboardKeyAppearance.apply(to: button, palette: palette) }
         button.accessibilityLabel = title
-        button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
+        if title == "⌫" {
+            button.addAction(UIAction { [weak self] _ in
+                guard let self, !self.isPreview else { return }
+                self.startDelete()
+                self.feedback()
+            }, for: .touchDown)
+            button.addAction(UIAction { [weak self] _ in
+                guard let self, !self.isPreview else { return }
+                // Accessibility activation can send only touchUpInside.
+                if !self.deleteHeld { self.backspace() }
+                self.stopDelete()
+            }, for: .touchUpInside)
+            button.addAction(UIAction { [weak self] _ in self?.stopDelete() },
+                             for: [.touchUpOutside, .touchCancel, .touchDragExit])
+        } else {
+            button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
+        }
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return button
@@ -513,6 +547,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildKeys() {
+        stopDelete()
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
@@ -635,6 +670,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildAppearancePanel() {
+        stack.addArrangedSubview(row([
+            (KeyboardPreferences.autocorrect ? "Autocorrect: On" : "Autocorrect: Off", { [weak self] in
+                KeyboardPreferences.autocorrect.toggle(); self?.buildKeys()
+            }),
+            (KeyboardPreferences.textReplacement ? "Replacements: On" : "Replacements: Off", { [weak self] in
+                KeyboardPreferences.textReplacement.toggle(); self?.buildKeys()
+            })
+        ]))
+        stack.addArrangedSubview(row([
+            (AukkhorSettings.keyboardClipboardEnabled ? "Windows tools: On" : "Windows tools: Off", { [weak self] in
+                AukkhorSettings.keyboardClipboardEnabled.toggle(); self?.buildKeys()
+            })
+        ]))
         stack.addArrangedSubview(row([
             ("Theme: " + KeyboardPreferences.preset.title, { [weak self] in self?.cycleTheme() }),
             ("Done", { [weak self] in self?.settingsPanel = false; self?.buildKeys() })
@@ -772,6 +820,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func buildClipboardPanel() {
         stack.addArrangedSubview(row([
+            (ScreenshotClipboard.enabled ? "Auto screenshots: On" : "Auto screenshots: Off", { [weak self] in
+                self?.toggleScreenshotCopy()
+            }),
+            ("Refresh status", { [weak self] in self?.buildKeys() })
+        ]))
+        let access = UILabel()
+        access.text = "iOS Full Access: \(hasFullAccess ? "On" : "Off") · Shared settings: \(AukkhorSettings.sharedSettingsAvailable ? "Yes" : "No")\n" + ScreenshotClipboard.shared.status
+        access.font = .systemFont(ofSize: 11)
+        access.numberOfLines = 3
+        access.textColor = palette.foreground
+        access.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        stack.addArrangedSubview(access)
+        stack.addArrangedSubview(row([
             ("Read current clipboard", { [weak self] in self?.saveCurrentClipboard() }),
             ("Clear session history", { [weak self] in
                 self?.clipboardHistory.removeAll(); self?.buildKeys()
@@ -798,11 +859,30 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if clipboardHistory.count > 5 { clipboardHistory.removeLast() }
     }
 
-    private func saveCurrentClipboard() {
-        guard hasFullAccess, AukkhorSettings.keyboardClipboardEnabled else {
-            show("Enable Full Access and keyboard tools")
+    private func toggleScreenshotCopy() {
+        guard requireClipboardAccess() else { return }
+        if ScreenshotClipboard.enabled {
+            ScreenshotClipboard.enabled = false
+            ScreenshotClipboard.shared.stop()
+            buildKeys()
             return
         }
+        Task { @MainActor [weak self] in
+            let permission = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            guard let self else { return }
+            guard permission == .authorized || permission == .limited else {
+                self.show("Allow Photos access in iOS Settings for Aukkhor.")
+                return
+            }
+            ScreenshotClipboard.enabled = true
+            ScreenshotClipboard.shared.start()
+            self.buildKeys()
+            self.show(ScreenshotClipboard.shared.status)
+        }
+    }
+
+    private func saveCurrentClipboard() {
+        guard requireClipboardAccess() else { return }
         guard let value = UIPasteboard.general.string else { show("Clipboard has no text"); return }
         recordClip(value)
         buildKeys()
@@ -821,16 +901,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         textDocumentProxy.insertText(replacement)
     }
 
-    private func applyTextReplacementIfNeeded() {
+    private func applyTextReplacementIfNeeded(delimiter: String) {
         guard mode == .english, !symbols, !emojiMode else { return }
+        // Read the two live settings independently. System shortcut expansion
+        // and dictionary autocorrect are different features.
+        let allowShortcuts = KeyboardPreferences.textReplacement
+        let allowCorrection = KeyboardPreferences.autocorrect
+        guard allowShortcuts || allowCorrection else { return }
         let current = currentWord()
-        guard !current.isEmpty else { return }
-        let suggestion = KeyboardSuggestions.correction(current, replacements: replacements)
-        guard let suggestion,
-              (replacements[current.lowercased()] != nil || typingOptions.autocorrect) else { return }
+        guard !current.isEmpty, current != suppressedReplacement else { return }
+        let shortcut = allowShortcuts ? replacements[current.lowercased()] : nil
+        let suggestion = shortcut ?? (allowCorrection ? KeyboardSuggestions.correction(current, replacements: [:]) : nil)
+        guard let suggestion, suggestion != current else { return }
         let capitalized = current.first?.isUppercase == true
             ? suggestion.prefix(1).uppercased() + String(suggestion.dropFirst()) : suggestion
         replaceWord(current, with: capitalized)
+        pendingReplacement = (current, capitalized + delimiter, textDocumentProxy.documentIdentifier)
     }
 
     private func applySuggestion(_ value: String) {
@@ -907,7 +993,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
         }
         suggestionWork = work
-        suggestionQueue.asyncAfter(deadline: .now() + 0.025, execute: work)
+        suggestionQueue.async(execute: work)
     }
 
     private func refreshSuggestions() {
@@ -935,7 +1021,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                                     bangla: self.mode == .bangla)
         }
         contextRefreshWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.035, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: work)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
@@ -968,6 +1054,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func type(_ value: String) {
+        pendingReplacement = nil
+        if value.first?.isLetter == true { suppressedReplacement = nil }
         if emojiMode && emojiSearch {
             if value == "\n" { emojiSearch = false; buildKeys(); return }
             if value.count == 1 && (value.first?.isLetter == true || value == " ") {
@@ -998,7 +1086,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             renderedBuffer = newText
         } else {
             if value == " " || value == "." || value == "," || value == "\n" || value == "!" || value == "?" {
-                applyTextReplacementIfNeeded()
+                applyTextReplacementIfNeeded(delimiter: value)
             }
             commitBuffer()
             textDocumentProxy.insertText(value)
@@ -1016,7 +1104,42 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func commitBuffer() { buffer = ""; renderedBuffer = "" }
 
-    private func backspace() {
+    private func startDelete() {
+        stopDelete()
+        deleteHeld = true
+        deleteTicks = 0
+        backspace()
+        guard deleteHeld else { return }
+        let timer = Timer(fire: Date().addingTimeInterval(0.35), interval: 0.05, repeats: true) { [weak self] _ in
+            guard let self, self.deleteHeld else { return }
+            self.deleteTicks += 1
+            let count = self.deleteTicks > 80 ? 8 : (self.deleteTicks > 40 ? 3 : 1)
+            for _ in 0..<count { self.backspace(refresh: false) }
+            if self.deleteTicks % 3 == 0 { self.refreshSuggestions() }
+        }
+        deleteTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func stopDelete() {
+        deleteTimer?.invalidate()
+        deleteTimer = nil
+        deleteHeld = false
+    }
+
+    private func backspace(refresh: Bool = true) {
+        if let undo = pendingReplacement {
+            pendingReplacement = nil
+            if textDocumentProxy.documentIdentifier == undo.document,
+               (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(undo.inserted) {
+                for _ in undo.inserted { textDocumentProxy.deleteBackward() }
+                textDocumentProxy.insertText(undo.original)
+                suppressedReplacement = undo.original
+                commitBuffer()
+                if refresh { refreshSuggestions() }
+                return
+            }
+        }
         if emojiMode && emojiSearch {
             if !emojiQuery.isEmpty { emojiQuery.removeLast() }
             buildKeys()
@@ -1032,7 +1155,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             commitBuffer()
             textDocumentProxy.deleteBackward()
         }
-        refreshSuggestions()
+        if refresh { refreshSuggestions() }
     }
 
     private func selectedOrNearbyText() -> String? {
@@ -1041,7 +1164,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func paste() {
-        guard hasFullAccess, AukkhorSettings.keyboardClipboardEnabled else { show("Enable Full Access and keyboard tools in Aukkhor") ; return }
+        guard requireClipboardAccess() else { return }
         if let value = UIPasteboard.general.string {
             commitBuffer(); textDocumentProxy.insertText(value)
             recordClip(value); refreshSuggestions()
@@ -1051,8 +1174,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } else { show("Clipboard has no text") }
     }
 
+    private func requireClipboardAccess(network: Bool = false) -> Bool {
+        AukkhorSettings.refreshSharedSettings()
+        guard hasFullAccess else {
+            show("iOS reports Full Access off. Enable it, then switch away and back to Aukkhor.")
+            return false
+        }
+        if network && !AukkhorSettings.keyboardClipboardEnabled {
+            show("Windows tools are off. Enable Windows tools in the keyboard's gear menu.")
+            return false
+        }
+        return true
+    }
+
     private func cut() {
-        guard hasFullAccess, AukkhorSettings.keyboardClipboardEnabled else { show("Enable Full Access and keyboard tools") ; return }
+        guard requireClipboardAccess() else { return }
         guard let selected = textDocumentProxy.selectedText, !selected.isEmpty else { show("Select text first") ; return }
         UIPasteboard.general.string = selected
         recordClip(selected)
@@ -1080,7 +1216,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func sendClipboardToPC() {
-        guard hasFullAccess, AukkhorSettings.keyboardClipboardEnabled else { show("Full Access is required") ; return }
+        guard requireClipboardAccess(network: true) else { return }
         guard let value = UIPasteboard.general.string else { show("Clipboard has no text") ; return }
         recordClip(value)
         Task { [weak self] in
@@ -1090,7 +1226,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func getClipboardFromPC() {
-        guard hasFullAccess, AukkhorSettings.keyboardClipboardEnabled else { show("Full Access is required") ; return }
+        guard requireClipboardAccess(network: true) else { return }
         Task { [weak self] in
             do {
                 let value = try await AukkhorLink.shared.receiveClipboard()

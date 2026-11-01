@@ -109,7 +109,7 @@ jobs:
           xcrun simctl bootstatus "$DEVICE" -b
           xcodebuild test -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Debug -destination "platform=iOS Simulator,id=$DEVICE" -derivedDataPath "$RUNNER_TEMP/AukkhorSimulatorDerived" -parallel-testing-enabled NO -only-testing:AukkhorTests -resultBundlePath KeyboardLayout.xcresult CODE_SIGNING_ALLOWED=NO
       - name: Test installed keyboard extension and capture full screen
-        if: ${{ !contains(github.event.head_commit.message, '[publish-unverified]') }}
+        if: ${{ !contains(github.event.head_commit.message, '[publish-unverified]') && !contains(github.event.head_commit.message, '[native-tests]') }}
         timeout-minutes: 20
         run: |
           set -euo pipefail

@@ -119,6 +119,7 @@ private final class KeyboardSystemTestController: UIViewController {
     @State private var numberRow = KeyboardPreferences.numberRow
     @State private var suggestions = KeyboardPreferences.suggestions
     @State private var autocorrect = KeyboardPreferences.autocorrect
+    @State private var textReplacement = KeyboardPreferences.textReplacement
     @State private var autoCaps = KeyboardPreferences.autoCapitalize
     @State private var doubleSpace = KeyboardPreferences.doubleSpacePeriod
     @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
@@ -149,6 +150,10 @@ private final class KeyboardSystemTestController: UIViewController {
                         }
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
+                    if keyboardPreset == .clearPrism {
+                        Text("One native clear glass canvas with subtle translucent keycaps. Refraction and coloured edge highlights come from iOS; Apple provides no separate dispersion-strength control. No per-key live glass effects.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     KeyboardThemePreview(revision: previewRevision)
                         .frame(height: KeyboardPreferences.typingHeight)
                         .listRowInsets(EdgeInsets())
@@ -255,6 +260,10 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: suggestions) { KeyboardPreferences.suggestions = $0 }
                     Toggle("Conservative autocorrect", isOn: $autocorrect)
                         .onChange(of: autocorrect) { KeyboardPreferences.autocorrect = $0 }
+                    Toggle("iOS text replacements", isOn: $textReplacement)
+                        .onChange(of: textReplacement) { KeyboardPreferences.textReplacement = $0 }
+                    Text("Autocorrect changes misspelled words. Text replacements expand your iOS shortcuts independently. Backspace immediately after expansion restores the original shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Automatic capitals", isOn: $autoCaps)
                         .onChange(of: autoCaps) { KeyboardPreferences.autoCapitalize = $0 }
                     Toggle("Double space for period", isOn: $doubleSpace)
@@ -387,7 +396,7 @@ private final class KeyboardSystemTestController: UIViewController {
                         Text("Experimental: uses an active background location session to try to keep screenshot observation running. Uses extra battery and shows the iOS location indicator. No coordinates are stored or uploaded. Permission alone does not keep the app alive. iOS may still stop it or reject background clipboard access. Start manually after launching; Stop ends location updates. Check the timestamp and verify by pasting in another app.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    Toggle("Enable tools in keyboard", isOn: $keyboardTools)
+                    Toggle("Enable Windows tools in keyboard", isOn: $keyboardTools)
                         .onChange(of: keyboardTools) { AukkhorSettings.keyboardClipboardEnabled = $0 }
                     Toggle("Foreground sync while this app is open", isOn: $clipboardSync)
                         .onChange(of: clipboardSync) {

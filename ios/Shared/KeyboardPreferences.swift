@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 
 enum KeyboardPreset: String, CaseIterable, Identifiable {
-    case system, midnight, fullBlack, liquidGlass, blossom, mint, sunset, highContrast, custom
+    case system, midnight, fullBlack, liquidGlass, clearPrism, blossom, mint, sunset, highContrast, custom
 
     var id: String { rawValue }
     var title: String {
@@ -11,6 +11,7 @@ enum KeyboardPreset: String, CaseIterable, Identifiable {
         case .midnight: return "Midnight"
         case .fullBlack: return "Full Black"
         case .liquidGlass: return "Liquid Glass"
+        case .clearPrism: return "Clear Prism"
         case .blossom: return "Blossom"
         case .mint: return "Mint"
         case .sunset: return "Sunset"
@@ -76,28 +77,28 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardUsesGlass") as? Bool ?? false }
         set { data.set(newValue, forKey: "keyboardUsesGlass") }
     }
-    static var glassEnabled: Bool { preset == .liquidGlass || usesGlass }
+    static var glassEnabled: Bool { preset == .liquidGlass || preset == .clearPrism || usesGlass }
     static var seamlessBackground: Bool {
         get { data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardSeamlessBackground") }
     }
     static var usesSystemCanvas: Bool {
-        seamlessBackground && (preset == .system || glassEnabled)
+        preset != .clearPrism && seamlessBackground && (preset == .system || glassEnabled)
     }
     static func setGlassEnabled(_ enabled: Bool) {
         usesGlass = enabled
-        if !enabled && preset == .liquidGlass { preset = .custom }
+        if !enabled && (preset == .liquidGlass || preset == .clearPrism) { preset = .custom }
     }
     static var clearGlass: Bool {
-        get { data.object(forKey: "keyboardClearGlass") as? Bool ?? false }
+        get { preset == .clearPrism || (data.object(forKey: "keyboardClearGlass") as? Bool ?? false) }
         set { data.set(newValue, forKey: "keyboardClearGlass") }
     }
     static var glassTintStrength: CGFloat {
-        get { CGFloat(data.object(forKey: "keyboardGlassTint") as? Double ?? 0.08) }
+        get { preset == .clearPrism ? 0 : CGFloat(data.object(forKey: "keyboardGlassTint") as? Double ?? 0.08) }
         set { data.set(Double(max(0, min(0.5, newValue))), forKey: "keyboardGlassTint") }
     }
     static var interactiveGlass: Bool {
-        get { data.object(forKey: "keyboardInteractiveGlass") as? Bool ?? true }
+        get { preset != .clearPrism && (data.object(forKey: "keyboardInteractiveGlass") as? Bool ?? true) }
         set { data.set(newValue, forKey: "keyboardInteractiveGlass") }
     }
     static var cornerRadius: CGFloat {
@@ -133,6 +134,10 @@ enum KeyboardPreferences {
     static var autocorrect: Bool {
         get { data.bool(forKey: "keyboardAutocorrect") }
         set { data.set(newValue, forKey: "keyboardAutocorrect") }
+    }
+    static var textReplacement: Bool {
+        get { data.object(forKey: "keyboardTextReplacement") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardTextReplacement") }
     }
     static var autoCapitalize: Bool {
         get { data.object(forKey: "keyboardAutoCaps") as? Bool ?? true }
@@ -222,6 +227,10 @@ struct KeyboardPalette {
                          secondaryKey: UIColor(keyboardHex: "#202020"), foreground: .white,
                          muted: UIColor(keyboardHex: "#A0A0A0"), accent: .white,
                          border: UIColor(keyboardHex: "#333333"))
+        case .clearPrism:
+            return .init(background: .clear, key: .white, secondaryKey: .white,
+                         foreground: .white, muted: UIColor.white.withAlphaComponent(0.7),
+                         accent: .cyan, border: .white)
         case .liquidGlass:
             return .init(background: UIColor(keyboardHex: "#11131A"), key: UIColor(keyboardHex: "#353B48"),
                          secondaryKey: UIColor(keyboardHex: "#4C5362"), foreground: .white,
@@ -327,7 +336,8 @@ enum KeyboardKeyAppearance {
         // effect for every key is expensive in the keyboard extension process.
         // Simple translucent fills preserve user colors/opacity without adding
         // dozens of independent backdrop captures and touch animations.
-        button.backgroundColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
+        let opacity = KeyboardPreferences.keyOpacity * (KeyboardPreferences.preset == .clearPrism ? 0.12 : 1)
+        button.backgroundColor = color.withAlphaComponent(opacity)
         if KeyboardPreferences.keycapStyle == 0 {
             button.layer.borderWidth = glass ? 0.5 : 0.25
             button.layer.borderColor = palette.border.withAlphaComponent(0.4).cgColor
@@ -365,10 +375,16 @@ final class KeyboardInteractionView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard isUserInteractionEnabled, !isHidden, alpha > 0.01,
               bounds.contains(point) else { return nil }
+        // UIKit already finds direct key hits. Only search nearby keys when
+        // the finger actually lands in a gap, not for every touch event.
+        let direct = super.hitTest(point, with: event)
+        if let key = direct as? UIButton, key.isEnabled,
+           key.bounds.contains(key.convert(point, from: self)) { return key }
         var nearest: UIButton?
         var nearestDistance = CGFloat.greatestFiniteMagnitude
         func visit(_ parent: UIView) {
             for child in parent.subviews where !child.isHidden && child.alpha > 0.01 && child.isUserInteractionEnabled {
+                if child.clipsToBounds && !child.bounds.contains(child.convert(point, from: self)) { continue }
                 if let key = child as? UIButton, key.isEnabled {
                     let frame = key.convert(key.bounds, to: self)
                     guard frame.width > 0, frame.height > 0 else { continue }
@@ -383,7 +399,7 @@ final class KeyboardInteractionView: UIView {
             }
         }
         visit(self)
-        return nearest ?? super.hitTest(point, with: event)
+        return nearest ?? direct
     }
 }
 
