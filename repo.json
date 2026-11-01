@@ -10,11 +10,21 @@
       "name": "Aukkhor",
       "bundleIdentifier": "dev.soum91.aukkhor",
       "developerName": "soum91",
-      "subtitle": "iPhone keyboard · 0.2.0.53",
+      "subtitle": "iPhone keyboard · 0.2.0.54",
       "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
       "category": "utilities",
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
+        {
+          "version": "0.2.0.54",
+          "buildVersion": "54",
+          "date": "2026-11-01",
+          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
+          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.54/Aukkhor-unsigned.ipa",
+          "size": 1246787,
+          "minOSVersion": "16.0"
+        },
         {
           "version": "0.2.0.53",
           "buildVersion": "53",
@@ -63,16 +73,6 @@
           "changelog": "Native background update: transparent input root and no duplicate rounded glass panel with Background: iOS (default for glass/System themes). Works with normal keycaps and Keycaps: None; retains compact height. Background: Custom keeps separate Clear/Frosted glass, tint and photos. Compiled with Xcode 27.1 and passed host/keyboard IPA audit. Published at the owner's request before full-screen UI verification completed. Physical iPhone appearance remains unverified; iOS controls margins and the globe strip outside the extension.",
           "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.47/Aukkhor-unsigned.ipa",
           "size": 1238798,
-          "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.38",
-          "buildVersion": "38",
-          "date": "2026-10-31",
-          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Glass rendering correction: adaptive Frosted glass is the default for unset preferences; explicit Clear choices are preserved. Restore the native keyboard backdrop and refresh the canvas material after window presentation. Clear/Frosted controls now refresh the app preview. Retains build 37 compact height and removable keycaps. Eight simulator tests passed, including pixel checks over a black responder host on first opening and reopening; physical-device appearance remains unverified.",
-          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.38/Aukkhor-unsigned.ipa",
-          "size": 1228077,
           "minOSVersion": "16.0"
         }
       ],
