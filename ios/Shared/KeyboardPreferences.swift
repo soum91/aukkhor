@@ -323,27 +323,11 @@ enum KeyboardKeyAppearance {
         guard KeyboardPreferences.keycapStyle != 2 else { return }
         let color = secondary ? palette.secondaryKey : palette.key
         let glass = KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass
-        if glass && !UIAccessibility.isReduceTransparencyEnabled {
-            let effect: UIVisualEffect
-            if #available(iOS 26.0, *) {
-                let material = UIGlassEffect(style: .regular)
-                material.isInteractive = true
-                material.tintColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
-                effect = material
-            } else {
-                effect = UIBlurEffect(style: .systemUltraThinMaterial)
-            }
-            let backdrop = UIVisualEffectView(effect: effect)
-            backdrop.tag = 9401
-            backdrop.isUserInteractionEnabled = false
-            backdrop.frame = button.bounds
-            backdrop.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            backdrop.layer.cornerRadius = KeyboardPreferences.cornerRadius
-            backdrop.clipsToBounds = true
-            button.insertSubview(backdrop, at: 0)
-        } else {
-            button.backgroundColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
-        }
+        // The shared canvas supplies the refracted material. A live interactive
+        // effect for every key is expensive in the keyboard extension process.
+        // Simple translucent fills preserve user colors/opacity without adding
+        // dozens of independent backdrop captures and touch animations.
+        button.backgroundColor = color.withAlphaComponent(KeyboardPreferences.keyOpacity)
         if KeyboardPreferences.keycapStyle == 0 {
             button.layer.borderWidth = glass ? 0.5 : 0.25
             button.layer.borderColor = palette.border.withAlphaComponent(0.4).cgColor
@@ -360,7 +344,12 @@ final class KeyboardButton: UIButton {
         bounds.insetBy(dx: -6, dy: -6).contains(point)
     }
     override var isHighlighted: Bool {
-        didSet { if oldValue != isHighlighted { alpha = isHighlighted ? 0.65 : 1 } }
+        didSet {
+            guard oldValue != isHighlighted else { return }
+            // Avoid changing opacity of the entire key/material subtree.
+            titleLabel?.alpha = isHighlighted ? 0.55 : 1
+            imageView?.alpha = isHighlighted ? 0.55 : 1
+        }
     }
     override func layoutSubviews() {
         super.layoutSubviews()

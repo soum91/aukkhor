@@ -559,16 +559,14 @@ private final class KeyboardHostField: UITextField {
         let q = all.first { $0.title(for: .normal) == "q" }!
         let space = all.first { $0.accessibilityLabel == "Space" }!
         for button in [q, space] {
-            XCTAssertTrue(button.subviews.contains { $0 is UIVisualEffectView })
+            XCTAssertFalse(button.subviews.contains { $0 is UIVisualEffectView },
+                           "Keycaps must not allocate individual live backdrop effects")
+            XCTAssertGreaterThan(button.backgroundColor?.cgColor.alpha ?? 0, 0)
             XCTAssertEqual(button.layer.cornerRadius, KeyboardPreferences.cornerRadius)
         }
-        for button in all where button.image(for: .normal) != nil {
-            if let backdropIndex = button.subviews.firstIndex(where: { $0 is UIVisualEffectView }),
-               let imageView = button.imageView,
-               let iconIndex = button.subviews.firstIndex(of: imageView) {
-                XCTAssertGreaterThan(iconIndex, backdropIndex, "Glass must stay behind symbols")
-            }
-        }
+        XCTAssertFalse(all.contains { button in
+            button.subviews.contains { $0 is UIVisualEffectView }
+        }, "Letters, Space and action keys all share the canvas instead of capturing it separately")
         capture(keyboard, name: "liquid-glass-keycaps")
     }
 }
