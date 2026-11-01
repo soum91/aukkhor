@@ -256,7 +256,24 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
-    // Regression: build 48 looked correct but the effectless glass host swallowed physical taps.\n    func testSystemCanvasHasNoSeparatePanel() {
+    func testKeyTouchToleranceAndGaps() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
+        let first = KeyboardButton(type: .custom)
+        let second = KeyboardButton(type: .custom)
+        first.frame = CGRect(x: 4, y: 4, width: 40, height: 36)
+        second.frame = CGRect(x: 50, y: 4, width: 40, height: 36)
+        host.addSubview(first)
+        host.addSubview(second)
+        XCTAssertTrue(host.hitTest(CGPoint(x: 45, y: 22), with: nil) === first)
+        XCTAssertTrue(host.hitTest(CGPoint(x: 49, y: 22), with: nil) === second)
+        XCTAssertTrue(first.point(inside: CGPoint(x: 43, y: 18), with: nil))
+        XCTAssertFalse(first.point(inside: CGPoint(x: 48, y: 18), with: nil))
+        second.isHidden = true
+        XCTAssertFalse(host.hitTest(CGPoint(x: 70, y: 22), with: nil) === second)
+        XCTAssertNil(host.hitTest(CGPoint(x: -1, y: 22), with: nil))
+    }
+
+    func testSystemCanvasHasNoSeparatePanel() {
         let oldPreset = KeyboardPreferences.preset
         let oldStyle = KeyboardPreferences.keycapStyle
         let oldSeamless = KeyboardPreferences.seamlessBackground
@@ -554,4 +571,3 @@ private final class KeyboardHostField: UITextField {
         capture(keyboard, name: "liquid-glass-keycaps")
     }
 }
-

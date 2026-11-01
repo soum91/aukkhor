@@ -65,7 +65,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // Keep every control in a plain view above the decorative material. An
     // effectless UIVisualEffectView can still install private hit-test views
     // when UIKit moves a keyboard extension between remote host windows.
-    private let interactionHost = UIView()
+    private let interactionHost = KeyboardInteractionView()
+    private lazy var glideRecognizer: UIPanGestureRecognizer = {
+        let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleGlide(_:)))
+        recognizer.cancelsTouchesInView = true
+        recognizer.delaysTouchesBegan = false
+        recognizer.delaysTouchesEnded = false
+        recognizer.delegate = self
+        return recognizer
+    }()
     private let stack = UIStackView()
     private let contentStack = UIStackView()
     private var toolsExpanded = false
@@ -172,10 +180,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         preferredHeight.priority = UILayoutPriority(999)
         preferredHeight.isActive = true
         keyboardHeightConstraint = preferredHeight
-        let glide = UIPanGestureRecognizer(target: self, action: #selector(handleGlide(_:)))
-        glide.cancelsTouchesInView = true
-        glide.delegate = self
-        view.addGestureRecognizer(glide)
+        glideRecognizer.isEnabled = typingOptions.glide
+        view.addGestureRecognizer(glideRecognizer)
         if !isPreview {
         requestSupplementaryLexicon { [weak self] lexicon in
             DispatchQueue.main.async {
@@ -501,6 +507,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func buildKeys() {
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
+        glideRecognizer.isEnabled = typingOptions.glide
         suggestionWork?.cancel()
         suggestionGeneration += 1
         suggestionRequestKey = nil
@@ -1081,5 +1088,4 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 }
-
 

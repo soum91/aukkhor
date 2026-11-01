@@ -354,6 +354,11 @@ enum KeyboardKeyAppearance {
 // UIButton can insert its image view lazily during layout. Keep the material
 // beneath both label and symbol even after UIKit rebuilds those subviews.
 final class KeyboardButton: UIButton {
+    // Finger contact often rolls just beyond a narrow key before lifting.
+    // Keep that press valid while it remains near the original key.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -6, dy: -6).contains(point)
+    }
     override var isHighlighted: Bool {
         didSet { if oldValue != isHighlighted { alpha = isHighlighted ? 0.65 : 1 } }
     }
@@ -362,6 +367,34 @@ final class KeyboardButton: UIButton {
         if let backdrop = subviews.first(where: { $0.tag == 9401 }), subviews.first !== backdrop {
             sendSubviewToBack(backdrop)
         }
+    }
+}
+
+// Fill only the small gaps between keys, without growing or moving their caps.
+// Prefer the closest enabled key; never route outside the keyboard's bounds.
+final class KeyboardInteractionView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard isUserInteractionEnabled, !isHidden, alpha > 0.01,
+              bounds.contains(point) else { return nil }
+        var nearest: UIButton?
+        var nearestDistance = CGFloat.greatestFiniteMagnitude
+        func visit(_ parent: UIView) {
+            for child in parent.subviews where !child.isHidden && child.alpha > 0.01 && child.isUserInteractionEnabled {
+                if let key = child as? UIButton, key.isEnabled {
+                    let frame = key.convert(key.bounds, to: self)
+                    guard frame.width > 0, frame.height > 0 else { continue }
+                    let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
+                    let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
+                    let distance = dx * dx + dy * dy
+                    if dx <= 6 && dy <= 6 && distance < nearestDistance {
+                        nearest = key
+                        nearestDistance = distance
+                    }
+                } else { visit(child) }
+            }
+        }
+        visit(self)
+        return nearest ?? super.hitTest(point, with: event)
     }
 }
 
@@ -386,4 +419,3 @@ final class KeyboardInputView: UIInputView {
         return CGSize(width: width, height: contentHeight)
     }
 }
-
