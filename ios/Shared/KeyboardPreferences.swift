@@ -269,7 +269,9 @@ struct KeyboardPalette {
         effectView.alpha = 1
         effectView.backgroundColor = .clear
         effectView.contentView.backgroundColor = .clear
-        effectView.isUserInteractionEnabled = true
+        // This view is decoration only. Controls live in a plain sibling above
+        // it so UIKit's private glass/backdrop views can never swallow taps.
+        effectView.isUserInteractionEnabled = false
         // UIKit already paints the keyboard plate, including the globe area.
         // A second, rounded material confined to the extension creates a seam.
         let systemCanvas = KeyboardPreferences.usesSystemCanvas
@@ -384,3 +386,4 @@ final class KeyboardInputView: UIInputView {
         return CGSize(width: width, height: contentHeight)
     }
 }
+

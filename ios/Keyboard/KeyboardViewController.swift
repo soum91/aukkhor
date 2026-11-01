@@ -62,6 +62,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suggestionRequestKey: String?
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
+    // Keep every control in a plain view above the decorative material. An
+    // effectless UIVisualEffectView can still install private hit-test views
+    // when UIKit moves a keyboard extension between remote host windows.
+    private let interactionHost = UIView()
     private let stack = UIStackView()
     private let contentStack = UIStackView()
     private var toolsExpanded = false
@@ -110,12 +114,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glassBackdrop.layer.cornerCurve = .continuous
         glassBackdrop.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
         glassBackdrop.clipsToBounds = true
+        glassBackdrop.isUserInteractionEnabled = false
         surface.addSubview(glassBackdrop)
+        interactionHost.translatesAutoresizingMaskIntoConstraints = false
+        interactionHost.backgroundColor = .clear
+        interactionHost.isOpaque = false
+        interactionHost.isUserInteractionEnabled = true
+        interactionHost.accessibilityIdentifier = "keyboard.interactionHost"
+        surface.addSubview(interactionHost)
         NSLayoutConstraint.activate([
             glassBackdrop.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
             glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
+        ])
+        NSLayoutConstraint.activate([
+            interactionHost.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            interactionHost.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            interactionHost.topAnchor.constraint(equalTo: surface.topAnchor),
+            interactionHost.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             backgroundImageView.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -128,12 +145,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         contentStack.axis = .horizontal
         contentStack.spacing = 6
         contentStack.translatesAutoresizingMaskIntoConstraints = false
-        glassBackdrop.contentView.addSubview(contentStack)
+        interactionHost.addSubview(contentStack)
         NSLayoutConstraint.activate([
-            contentStack.leadingAnchor.constraint(equalTo: glassBackdrop.contentView.leadingAnchor, constant: 4),
-            contentStack.trailingAnchor.constraint(equalTo: glassBackdrop.contentView.trailingAnchor, constant: -4),
-            contentStack.topAnchor.constraint(equalTo: glassBackdrop.contentView.topAnchor),
-            contentStack.bottomAnchor.constraint(equalTo: glassBackdrop.contentView.bottomAnchor)
+            contentStack.leadingAnchor.constraint(equalTo: interactionHost.leadingAnchor, constant: 4),
+            contentStack.trailingAnchor.constraint(equalTo: interactionHost.trailingAnchor, constant: -4),
+            contentStack.topAnchor.constraint(equalTo: interactionHost.topAnchor),
+            contentStack.bottomAnchor.constraint(equalTo: interactionHost.bottomAnchor)
         ])
         contentStack.addArrangedSubview(stack)
         // Messages overlay the existing strip; showing one never resizes the keys.
@@ -144,7 +161,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.layer.cornerRadius = 6
         banner.clipsToBounds = true
         banner.isHidden = true
-        glassBackdrop.contentView.addSubview(banner)
+        interactionHost.addSubview(banner)
         NSLayoutConstraint.activate([
             banner.leadingAnchor.constraint(equalTo: stack.leadingAnchor),
             banner.trailingAnchor.constraint(equalTo: stack.trailingAnchor),
@@ -1064,4 +1081,5 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 }
+
 

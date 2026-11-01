@@ -288,7 +288,19 @@ private final class KeyboardHostField: UITextField {
                 XCTAssertEqual(canvas.layer.cornerRadius, 0)
                 XCTAssertEqual(surface.frame, keyboard.view.bounds)
                 XCTAssertEqual(canvas.frame, surface.bounds)
+                XCTAssertFalse(canvas.isUserInteractionEnabled,
+                               "The decorative canvas must never participate in key hit testing")
+                let interactionHost = surface.subviews.first {
+                    $0.accessibilityIdentifier == "keyboard.interactionHost"
+                }!
+                XCTAssertTrue(interactionHost.isUserInteractionEnabled)
+                XCTAssertTrue(surface.subviews.last === interactionHost,
+                              "The key host must stay above every decorative layer")
                 let space = buttons(in: keyboard.view).first { $0.accessibilityLabel == "Space" }!
+                let center = space.convert(CGPoint(x: space.bounds.midX, y: space.bounds.midY),
+                                           to: keyboard.view)
+                XCTAssertTrue(keyboard.view.hitTest(center, with: nil) === space,
+                              "A visible key must be the actual hit-test target in system-canvas mode")
                 XCTAssertEqual(space.convert(space.bounds, to: keyboard.view).maxY,
                                keyboard.view.bounds.maxY, accuracy: 0.5)
                 keyboard.toggleAppearancePanel()
@@ -542,3 +554,4 @@ private final class KeyboardHostField: UITextField {
         capture(keyboard, name: "liquid-glass-keycaps")
     }
 }
+
