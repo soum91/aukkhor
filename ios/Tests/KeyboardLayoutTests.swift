@@ -256,6 +256,7 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
+    // Release regression coverage for narrow keys and the gaps between them.
     func testKeyTouchToleranceAndGaps() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         let first = KeyboardButton(type: .custom)
