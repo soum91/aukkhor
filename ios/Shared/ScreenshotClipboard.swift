@@ -42,6 +42,19 @@ import Combine
         recoverThenCheck()
     }
 
+    // A screenshot notification is delivered only to the foreground app that
+    // receives it. Photos often finishes saving the asset after the event, so
+    // allow two delayed passes without using an expensive polling loop.
+    func screenshotCapturedInForeground() {
+        guard active, Self.enabled else { return }
+        for delay in [0.8, 2.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self, self.active else { return }
+                self.check()
+            }
+        }
+    }
+
     func stop() {
         if observing { PHPhotoLibrary.shared().unregisterChangeObserver(self) }
         observing = false

@@ -90,6 +90,7 @@ jobs:
               assert root['CFBundleIdentifier']=='dev.soum91.aukkhor'
               assert ext['CFBundleIdentifier']=='dev.soum91.aukkhor.keyboard'
               assert ext['NSExtension']['NSExtensionPointIdentifier']=='com.apple.keyboard-service'
+              assert ext['NSExtension']['NSExtensionAttributes'].get('RequestsOpenAccess') is True, 'Full Access capability missing from keyboard Info.plist'
               for name, info in [(host,root),(keyboard,ext)]:
                   assert str(info.get('CFBundleDisplayName','')).strip(), name
                   assert str(info.get('CFBundleVersion')) == os.environ['EXPECTED_BUILD'], (name, info.get('CFBundleVersion'))

@@ -172,7 +172,9 @@ private final class KeyboardHostField: UITextField {
                            needsSwitcher ? 1 : 0)
             let letterKeys = ["q", "a", "z"].map { title in all.first { $0.title(for: .normal) == title }! }
             let q = letterKeys[0]
-            let material = q.subviews.first { $0 is UIVisualEffectView }!
+            let canvas = keyboard.view.subviews.flatMap { $0.subviews }
+                .first { $0.accessibilityIdentifier == "keyboard.canvasGlass" } as? UIVisualEffectView
+            XCTAssertNotNil(canvas, "One shared canvas supplies the entire keyboard")
             let oldFrame = q.convert(q.bounds, to: keyboard.view)
             keyboard.tapShift()
             keyboard.view.layoutIfNeeded()
@@ -182,7 +184,8 @@ private final class KeyboardHostField: UITextField {
                               "Shift updates every letter row without rebuilding keys")
             }
             XCTAssertTrue(q === capitalQ, "Shift updates labels without rebuilding letter keys")
-            XCTAssertTrue(material === capitalQ.subviews.first { $0 is UIVisualEffectView })
+            XCTAssertFalse(capitalQ.subviews.contains { $0 is UIVisualEffectView },
+                           "Fast keys must never own separate backdrop effects")
             XCTAssertEqual(oldFrame, capitalQ.convert(capitalQ.bounds, to: keyboard.view))
             keyboard.show("Clipboard sent")
             keyboard.view.layoutIfNeeded()
@@ -404,6 +407,9 @@ private final class KeyboardHostField: UITextField {
     }
 
     func testSuggestionsReuseButtonsAndRejectStaleResults() async throws {
+        let oldSuggestions = KeyboardPreferences.suggestions
+        KeyboardPreferences.suggestions = true
+        defer { KeyboardPreferences.suggestions = oldSuggestions }
         let keyboard = KeyboardViewController()
         keyboard.isPreview = true
         keyboard.loadViewIfNeeded()
@@ -416,7 +422,8 @@ private final class KeyboardHostField: UITextField {
             if candidateButtons.contains(where: { $0.title(for: .normal) == "hello" }) { break }
             try await Task.sleep(for: .milliseconds(30))
         }
-        XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "hello" })
+        XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "hello" },
+                      "A fresh completion must reach the persistent candidate buttons")
         for i in 0..<100 {
             keyboard.requestSuggestions(prefix: "h\(i)", phonetic: false, bangla: false)
         }
@@ -510,7 +517,7 @@ private final class KeyboardHostField: UITextField {
             keyboard.view.layoutIfNeeded()
             let glass = try XCTUnwrap(canvas(in: keyboard.view))
             let native = try XCTUnwrap(glass.effect as? UIGlassEffect)
-            XCTAssertTrue(native.isInteractive)
+            XCTAssertFalse(native.isInteractive, "The decorative material must not animate key touches")
             XCTAssertEqual(glass.overrideUserInterfaceStyle, clear ? .unspecified : .dark,
                            "Clear inherits the host; frosted glass keeps custom white text readable")
             XCTAssertEqual(glass.alpha, 1)

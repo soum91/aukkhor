@@ -311,7 +311,10 @@ struct KeyboardPalette {
         } else { effectView.overrideUserInterfaceStyle = .unspecified }
         if #available(iOS 26.0, *) {
             let material = UIGlassEffect(style: KeyboardPreferences.clearGlass ? .clear : .regular)
-            material.isInteractive = KeyboardPreferences.interactiveGlass
+            // The keyboard has dozens of rapid taps but no interactive glass
+            // controls. Let UIKit render refraction without running the
+            // material's touch animations on the input process.
+            material.isInteractive = false
             let tint = KeyboardPreferences.glassTintStrength
             material.tintColor = tint > 0 ? palette.accent.withAlphaComponent(tint) : nil
             effectView.effect = material
@@ -348,6 +351,9 @@ enum KeyboardKeyAppearance {
 // UIButton can insert its image view lazily during layout. Keep the material
 // beneath both label and symbol even after UIKit rebuilds those subviews.
 final class KeyboardButton: UIButton {
+    // Touch-down insertion is quicker than waiting for a lift. Keep a guard
+    // so VoiceOver's touch-up-only activation still works once, not twice.
+    var immediateActionTriggered = false
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
@@ -366,6 +372,43 @@ final class KeyboardButton: UIButton {
         if let backdrop = subviews.first(where: { $0.tag == 9401 }), subviews.first !== backdrop {
             sendSubviewToBack(backdrop)
         }
+    }
+}
+
+// A single inexpensive spectral edge for Clear Prism. The actual refraction
+// remains UIKit's clear material; no effects or touch handlers are put on keys.
+final class KeyboardPrismEdgeView: UIView {
+    private let spectrum = CAGradientLayer()
+    private let outline = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        spectrum.colors = [UIColor.systemCyan.withAlphaComponent(0.08).cgColor,
+                           UIColor.systemPink.withAlphaComponent(0.65).cgColor,
+                           UIColor.white.withAlphaComponent(0.8).cgColor,
+                           UIColor.systemTeal.withAlphaComponent(0.65).cgColor,
+                           UIColor.systemPurple.withAlphaComponent(0.12).cgColor]
+        spectrum.startPoint = CGPoint(x: 0, y: 0.25)
+        spectrum.endPoint = CGPoint(x: 1, y: 0.75)
+        layer.addSublayer(spectrum)
+        outline.fillColor = UIColor.clear.cgColor
+        outline.strokeColor = UIColor.black.cgColor
+        outline.lineWidth = 1.5
+        spectrum.mask = outline
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        spectrum.frame = bounds
+        outline.frame = bounds
+        outline.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
+                                    cornerRadius: 19).cgPath
+        CATransaction.commit()
     }
 }
 

@@ -57,9 +57,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var candidateButtons: [UIButton] = []
     private var candidateValues = [String](repeating: "", count: 3)
     private let suggestionHeading = UILabel()
-    private let suggestionQueue = DispatchQueue(label: "dev.soum91.aukkhor.suggestions", qos: .userInitiated)
-    private var suggestionWork: DispatchWorkItem?
-    private var suggestionGeneration = 0
     private var suggestionRequestKey: String?
     private var contextRefreshWork: DispatchWorkItem?
     private var contextRefreshGeneration = 0
@@ -82,6 +79,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
+    private let prismEdge = KeyboardPrismEdgeView()
     // Keep every control in a plain view above the decorative material. An
     // effectless UIVisualEffectView can still install private hit-test views
     // when UIKit moves a keyboard extension between remote host windows.
@@ -144,6 +142,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glassBackdrop.clipsToBounds = true
         glassBackdrop.isUserInteractionEnabled = false
         surface.addSubview(glassBackdrop)
+        prismEdge.translatesAutoresizingMaskIntoConstraints = false
+        prismEdge.accessibilityIdentifier = "keyboard.prismEdge"
+        surface.addSubview(prismEdge)
         interactionHost.translatesAutoresizingMaskIntoConstraints = false
         interactionHost.backgroundColor = .clear
         interactionHost.isOpaque = false
@@ -155,6 +156,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
             glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
+        ])
+        NSLayoutConstraint.activate([
+            prismEdge.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            prismEdge.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            prismEdge.topAnchor.constraint(equalTo: surface.topAnchor),
+            prismEdge.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             interactionHost.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -310,7 +317,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func makeButton(_ title: String, action: @escaping () -> Void,
-                            foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true) -> UIButton {
+                            foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true,
+                            immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
         button.setTitle(title, for: .normal)
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
@@ -338,7 +346,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self.stopDelete()
             }, for: .touchUpInside)
             button.addAction(UIAction { [weak self] _ in self?.stopDelete() },
-                             for: [.touchUpOutside, .touchCancel, .touchDragExit])
+                             for: [.touchUpOutside, .touchCancel])
+        } else if immediateInput {
+            button.addAction(UIAction { [weak self, weak button] _ in
+                guard let self, !self.isPreview else { return }
+                button?.immediateActionTriggered = true
+                action(); self.feedback()
+            }, for: .touchDown)
+            button.addAction(UIAction { [weak self, weak button] _ in
+                guard let self, !self.isPreview else { return }
+                if button?.immediateActionTriggered != true { action(); self.feedback() }
+                button?.immediateActionTriggered = false
+            }, for: .touchUpInside)
+            button.addAction(UIAction { [weak button] _ in button?.immediateActionTriggered = false },
+                             for: [.touchUpOutside, .touchCancel])
         } else {
             button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
         }
@@ -347,12 +368,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         return button
     }
 
-    private func row(_ items: [(String, () -> Void)]) -> UIStackView {
+    private func row(_ items: [(String, () -> Void)], immediateInput: Bool = false) -> UIStackView {
         let row = UIStackView()
         row.axis = .horizontal
         row.distribution = .fillEqually
         row.spacing = KeyboardPreferences.keySpacing
-        for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1)) }
+        for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1, immediateInput: immediateInput)) }
         row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         return row
     }
@@ -387,7 +408,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func addChars(_ chars: [String]) {
         let keys = row(chars.map { letter in
             (letter, { [weak self] in self?.typeCharacter(letter) })
-        })
+        }, immediateInput: true)
         rememberLetters(chars, in: keys)
         // Match the staggered QWERTY geometry of the system keyboard.
         // Insets belong outside the key row so every key retains equal touch width.
@@ -421,7 +442,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         shiftButton = shiftKey
         let deleteKey = makeButton("⌫", action: { [weak self] in self?.backspace() })
         deleteKey.accessibilityLabel = "Delete"
-        let letters = row(chars.map { letter in (letter, { [weak self] in self?.typeCharacter(letter) }) })
+        let letters = row(chars.map { letter in (letter, { [weak self] in self?.typeCharacter(letter) }) },
+                          immediateInput: true)
         rememberLetters(chars, in: letters)
         let leftGap = UIView(), rightGap = UIView()
         container.addArrangedSubview(shiftKey)
@@ -551,13 +573,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
-        suggestionWork?.cancel()
-        suggestionGeneration += 1
         suggestionRequestKey = nil
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
+        prismEdge.isHidden = KeyboardPreferences.preset != .clearPrism || UIAccessibility.isReduceTransparencyEnabled
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
         hasPhotoBackground = backgroundImageView.image != nil
@@ -971,29 +992,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    // Coalesce duplicate host callbacks and ignore stale results during fast typing.
-    // Text insertion happens immediately; only optional candidate lookup is deferred.
+    // The indexed local dictionary is small. Once host-context reads have been
+    // coalesced, a synchronous lookup avoids background-queue contention and
+    // stale callbacks resetting suggestions during fast typing.
     func requestSuggestions(prefix: String, phonetic: Bool, bangla: Bool) {
         contextRefreshGeneration += 1
         contextRefreshWork?.cancel()
         let key = "\(phonetic):\(bangla):\(prefix)"
         guard suggestionRequestKey != key else { return }
         suggestionRequestKey = key
-        suggestionGeneration += 1
-        let generation = suggestionGeneration
-        suggestionWork?.cancel()
         guard !prefix.isEmpty else { setCandidates([]); return }
-        let lexicon = replacements
-        let work = DispatchWorkItem { [weak self] in
-            let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
-                : KeyboardSuggestions.complete(prefix, banglaMode: bangla, replacements: lexicon)
-            DispatchQueue.main.async { [weak self] in
-                guard let self, self.suggestionGeneration == generation else { return }
-                self.setCandidates(values)
-            }
-        }
-        suggestionWork = work
-        suggestionQueue.async(execute: work)
+        let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
+            : KeyboardSuggestions.complete(prefix, banglaMode: bangla, replacements: replacements)
+        setCandidates(values)
     }
 
     private func refreshSuggestions() {
@@ -1001,8 +1012,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let generation = contextRefreshGeneration
         contextRefreshWork?.cancel()
         if emojiMode || clipboardPanel || settingsPanel || symbols || !typingOptions.suggestions {
-            suggestionGeneration += 1
-            suggestionWork?.cancel()
             suggestionRequestKey = nil
             let heading: String? = emojiMode ? (emojiSearch ? "🔍 \(emojiQuery)" : "Emoji: \(emojiGroup)")
                 : (clipboardPanel ? "Session clipboard" : nil)
@@ -1011,8 +1020,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         // Host context is cross-process. Coalesce callbacks and leave the key
         // action before reading it; ordinary English insertion stays immediate.
-        suggestionGeneration += 1
-        suggestionWork?.cancel()
         suggestionRequestKey = nil
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.contextRefreshGeneration == generation else { return }
@@ -1113,7 +1120,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let timer = Timer(fire: Date().addingTimeInterval(0.35), interval: 0.05, repeats: true) { [weak self] _ in
             guard let self, self.deleteHeld else { return }
             self.deleteTicks += 1
-            let count = self.deleteTicks > 80 ? 8 : (self.deleteTicks > 40 ? 3 : 1)
+            let count = self.deleteTicks > 36 ? 6 : (self.deleteTicks > 12 ? 2 : 1)
             for _ in 0..<count { self.backspace(refresh: false) }
             if self.deleteTicks % 3 == 0 { self.refreshSuggestions() }
         }

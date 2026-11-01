@@ -151,7 +151,7 @@ private final class KeyboardSystemTestController: UIViewController {
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
                     if keyboardPreset == .clearPrism {
-                        Text("One native clear glass canvas with subtle translucent keycaps. Refraction and coloured edge highlights come from iOS; Apple provides no separate dispersion-strength control. No per-key live glass effects.")
+                        Text("One native clear glass canvas with a lightweight spectral rim and subtle translucent keycaps. iOS controls the real refraction; the colored edge approximates dispersion without per-key glass effects.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     KeyboardThemePreview(revision: previewRevision)
@@ -262,7 +262,7 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: autocorrect) { KeyboardPreferences.autocorrect = $0 }
                     Toggle("iOS text replacements", isOn: $textReplacement)
                         .onChange(of: textReplacement) { KeyboardPreferences.textReplacement = $0 }
-                    Text("Autocorrect changes misspelled words. Text replacements expand your iOS shortcuts independently. Backspace immediately after expansion restores the original shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
+                    Text("Autocorrect and iOS text replacements are independent. To type literally, turn both off. Backspace immediately after expansion restores the shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
                         .font(.caption).foregroundStyle(.secondary)
                     Toggle("Automatic capitals", isOn: $autoCaps)
                         .onChange(of: autoCaps) { KeyboardPreferences.autoCapitalize = $0 }
@@ -419,6 +419,13 @@ private final class KeyboardSystemTestController: UIViewController {
                     Text("Settings → General → Keyboard → Keyboards → Add New Keyboard → Aukkhor")
                     Text("Full Access is needed for clipboard and Windows networking. It is not needed for typing English or Bangla.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Button("Open iOS Settings") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                    Text("App Group shared settings: \(AukkhorSettings.sharedSettingsAvailable ? "Available" : "Unavailable"). If Full Access stays off, remove Aukkhor from iOS Keyboards, add it again and enable Allow Full Access. If the switch is missing, the signed keyboard extension may be damaged; reinstall an IPA signed with the keyboard extension included.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
                     Button("Forget paired Windows", role: .destructive) {
@@ -439,7 +446,11 @@ private final class KeyboardSystemTestController: UIViewController {
             }
         }
         .onChange(of: scenePhase) { _ in
+            AukkhorSettings.refreshSharedSettings()
             if backgroundScreenshots.isRunning { backgroundScreenshots.refreshObserver() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            screenshotClipboard.screenshotCapturedInForeground()
         }
         .task(id: autoScreenshots && (scenePhase == .active || backgroundScreenshots.isRunning)) {
             if autoScreenshots && (scenePhase == .active || backgroundScreenshots.isRunning) {
