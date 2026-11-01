@@ -1,11 +1,14 @@
 import UIKit
 import Photos
+import Combine
 
 // Event-driven, session-only observation. No polling, networking or image
 // decoding in the keyboard. A reopen check catches a screenshot saved while
 // iOS temporarily suspended the extension.
-@MainActor final class ScreenshotClipboard: NSObject, PHPhotoLibraryChangeObserver {
+@MainActor final class ScreenshotClipboard: NSObject, ObservableObject, PHPhotoLibraryChangeObserver {
     static let shared = ScreenshotClipboard()
+    @Published private(set) var status = "Screenshot observer is stopped."
+    private var context = "keyboard"
     static var enabled: Bool {
         get { AukkhorSettings.defaults.bool(forKey: "autoScreenshotClipboard") }
         set {
@@ -24,12 +27,16 @@ import Photos
     private var requestID: PHImageRequestID?
     private let queue = DispatchQueue(label: "dev.soum91.aukkhor.screenshots", qos: .utility)
 
-    func start() {
+    func start(context: String = "keyboard") {
+        self.context = context
         guard Self.enabled else { stop(); return }
         let permission = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard permission == .authorized || permission == .limited else { stop(); return }
+        guard permission == .authorized || permission == .limited else {
+            stop(); status = "Photos access is unavailable in this process."; return
+        }
         if !active {
             active = true
+            status = "Watching for newly saved screenshots (\(context))."
             PHPhotoLibrary.shared().register(self)
         }
         check()
@@ -44,6 +51,8 @@ import Photos
         busy = false
         pending = false
         fetchResult = nil
+        status = "Screenshot observer stopped. Last attempt: " +
+            (AukkhorSettings.defaults.string(forKey: "lastScreenshotCopyAttempt") ?? "none")
     }
 
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
@@ -90,13 +99,30 @@ import Photos
                     Task { @MainActor in
                         guard let self, self.active, self.generation == token else { return }
                         defer { self.finish() }
-                        guard Self.enabled, let data, !data.isEmpty,
-                              data.count <= 12 * 1024 * 1024, let type,
-                              UIPasteboard.general.changeCount == clipboardRevision else { return }
+                        guard Self.enabled else { return }
+                        guard let data, !data.isEmpty, let type else {
+                            self.status = "Screenshot found, but Photos did not supply local image data."
+                            return
+                        }
+                        guard data.count <= 12 * 1024 * 1024 else {
+                            self.status = "Screenshot skipped: image exceeds 12 MB."
+                            return
+                        }
+                        guard UIPasteboard.general.changeCount == clipboardRevision else {
+                            self.status = "Screenshot skipped: clipboard changed during image loading."
+                            return
+                        }
                         // Preserve the compressed original without decoding a
                         // full-resolution screenshot into extension memory.
                         UIPasteboard.general.setData(data, forPasteboardType: type)
-                        AukkhorSettings.defaults.set(asset.localIdentifier, forKey: "lastScreenshotCopied")
+                        let changed = UIPasteboard.general.changeCount != clipboardRevision
+                        self.status = "\(Date().formatted(date: .omitted, time: .standard)) (\(self.context)): " +
+                            (changed ? "clipboard revision changed; verify by pasting the image."
+                                     : "clipboard write was not confirmed; will retry when reopened.")
+                        AukkhorSettings.defaults.set(self.status, forKey: "lastScreenshotCopyAttempt")
+                        if changed {
+                            AukkhorSettings.defaults.set(asset.localIdentifier, forKey: "lastScreenshotCopied")
+                        }
                     }
                 }
             }

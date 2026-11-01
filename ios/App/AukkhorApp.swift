@@ -86,7 +86,9 @@ private final class KeyboardSystemTestController: UIViewController {
 }
 #endif
 
-struct AukkhorHome: View {
+@MainActor struct AukkhorHome: View {
+    @StateObject private var backgroundScreenshots = BackgroundScreenshotSession()
+    @ObservedObject private var screenshotClipboard = ScreenshotClipboard.shared
     @Environment(\.scenePhase) private var scenePhase
     @State private var keyboardSample = ""
     @State private var host = AukkhorSettings.host
@@ -324,6 +326,7 @@ struct AukkhorHome: View {
                     Toggle("Automatically copy new screenshots", isOn: $autoScreenshots)
                         .onChange(of: autoScreenshots) { enabled in
                             if !enabled {
+                                backgroundScreenshots.stop()
                                 ScreenshotClipboard.enabled = false
                                 ScreenshotClipboard.shared.stop()
                             } else {
@@ -343,7 +346,7 @@ struct AukkhorHome: View {
                                 }
                             }
                         }
-                    Text("Enable Photos access and keyboard Full Access once. Copies only newly saved screenshots from the last two minutes while Aukkhor or its keyboard is visible, or when reopened. Full Photos access is needed for all new screenshots. No continuous background service. Images stay on this device; files larger than 12 MB or available only in iCloud are skipped. A keyboard signer must preserve the shared App Group for this setting to reach the keyboard.")
+                    Text("Enable Photos access and keyboard Full Access once. Copies only newly saved screenshots from the last two minutes. Default mode checks while Aukkhor or its keyboard is visible, or when reopened. Full Photos access is needed for all new screenshots. Background mode below is an optional experiment. Images stay on this device; files larger than 12 MB or available only in iCloud are skipped. A keyboard signer must preserve the shared App Group for this setting to reach the keyboard.")
                         .font(.caption).foregroundStyle(.secondary)
                     PhotosPicker(selection: $selectedClipboardImage, matching: .images) {
                         Label("Copy screenshot or photo", systemImage: "photo.on.rectangle")
@@ -366,6 +369,24 @@ struct AukkhorHome: View {
                     }
                     Text("Choose an existing screenshot or photo to copy. Image pasting depends on the destination app; the keyboard Paste button inserts text only.")
                         .font(.caption).foregroundStyle(.secondary)
+                    if autoScreenshots {
+                        if backgroundScreenshots.isRunning {
+                            Button("Stop background screenshot experiment", role: .destructive) {
+                                backgroundScreenshots.stop()
+                            }
+                        } else {
+                            Button("Start background screenshot experiment") {
+                                backgroundScreenshots.start()
+                            }
+                        }
+                        Button("Request Always location permission") {
+                            backgroundScreenshots.requestAlwaysPermission()
+                        }
+                        Text(backgroundScreenshots.status).font(.caption)
+                        Text(screenshotClipboard.status).font(.caption)
+                        Text("Experimental: uses an active background location session to try to keep screenshot observation running. Uses extra battery and shows the iOS location indicator. No coordinates are stored or uploaded. Permission alone does not keep the app alive. iOS may still stop it or reject background clipboard access. Start manually after launching; Stop ends location updates. Check the timestamp and verify by pasting in another app.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle("Enable tools in keyboard", isOn: $keyboardTools)
                         .onChange(of: keyboardTools) { AukkhorSettings.keyboardClipboardEnabled = $0 }
                     Toggle("Foreground sync while this app is open", isOn: $clipboardSync)
@@ -408,9 +429,12 @@ struct AukkhorHome: View {
                 TVTypingSheet(prompt: prompt, destination: .windows)
             }
         }
-        .task(id: autoScreenshots && scenePhase == .active) {
-            if autoScreenshots && scenePhase == .active {
-                ScreenshotClipboard.shared.start()
+        .onChange(of: scenePhase) { _ in
+            if backgroundScreenshots.isRunning { backgroundScreenshots.refreshObserver() }
+        }
+        .task(id: autoScreenshots && (scenePhase == .active || backgroundScreenshots.isRunning)) {
+            if autoScreenshots && (scenePhase == .active || backgroundScreenshots.isRunning) {
+                ScreenshotClipboard.shared.start(context: scenePhase == .active ? "app foreground" : "app background")
             } else { ScreenshotClipboard.shared.stop() }
         }
         .task(id: clipboardSync && scenePhase == .active) {

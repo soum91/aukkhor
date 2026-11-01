@@ -34,6 +34,10 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
+        NSLocationWhenInUseUsageDescription: Optional experimental screenshot mode uses active location updates to try to keep Aukkhor running in the background. Coordinates are not stored or transmitted.
+        NSLocationAlwaysAndWhenInUseUsageDescription: Optional experimental screenshot mode uses background location updates to try to observe new screenshots. This consumes battery and does not store or transmit coordinates.
+        UIBackgroundModes:
+          - location
         NSPhotoLibraryUsageDescription: Aukkhor optionally reads newly saved screenshots to copy them automatically to your clipboard while its app or keyboard is active.
         NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
         AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
