@@ -26,8 +26,9 @@ import XCTest
         // The app-settings page stopped exposing the "Keyboards" shortcut on
         // some iOS 27 simulators. First use it when present, then navigate the
         // public General > Keyboard > Keyboards route as a fallback.
-        let shortcut = settings.descendants(matching: .any)
-            .matching(NSPredicate(format: "label == 'Keyboards'")).firstMatch
+        let shortcut = settings.cells.matching(NSPredicate(
+            format: "label == 'Keyboards' OR label BEGINSWITH 'Keyboards,'"
+        )).firstMatch
         if shortcut.waitForExistence(timeout: 2), shortcut.isHittable {
             shortcut.tap()
             return true
@@ -45,8 +46,14 @@ import XCTest
             back.tap()
         }
         guard tap("General", in: settings, timeout: 5),
-              tap("Keyboard", in: settings, timeout: 5),
-              tap("Keyboards", in: settings, timeout: 5) else { return false }
+              tap("Keyboard", in: settings, timeout: 5) else { return false }
+        // Do not use a generic label query here: the navigation title also
+        // says "Keyboards" and the real row has label "Keyboards, 2".
+        let listRow = settings.cells.matching(NSPredicate(
+            format: "identifier == 'KEYBOARDS' OR label BEGINSWITH 'Keyboards,'"
+        )).firstMatch
+        guard listRow.waitForExistence(timeout: 10), listRow.isHittable else { return false }
+        listRow.tap()
         return true
     }
 
