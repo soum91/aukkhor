@@ -22,6 +22,34 @@ import XCTest
         add(attachment)
     }
 
+    private func openKeyboardSettings(_ settings: XCUIApplication) -> Bool {
+        // The app-settings page stopped exposing the "Keyboards" shortcut on
+        // some iOS 27 simulators. First use it when present, then navigate the
+        // public General > Keyboard > Keyboards route as a fallback.
+        let shortcut = settings.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == 'Keyboards'")).firstMatch
+        if shortcut.waitForExistence(timeout: 2), shortcut.isHittable {
+            shortcut.tap()
+            return true
+        }
+        settings.terminate()
+        settings.launch()
+        // Settings may restore its last app-specific page after relaunch.
+        // Walk back to the root before looking for General.
+        for _ in 0..<6 {
+            if settings.staticTexts["General"].exists { break }
+            let back = settings.navigationBars.buttons.matching(NSPredicate(
+                format: "label == 'Settings' OR label == 'Apps' OR label == 'Back'"
+            )).firstMatch
+            guard back.exists && back.isHittable else { break }
+            back.tap()
+        }
+        guard tap("General", in: settings, timeout: 5),
+              tap("Keyboard", in: settings, timeout: 5),
+              tap("Keyboards", in: settings, timeout: 5) else { return false }
+        return true
+    }
+
     func testInstalledExtensionAcrossAppSwitchAndReopening() throws {
         continueAfterFailure = false
         let app = XCUIApplication(bundleIdentifier: "dev.soum91.aukkhor")
@@ -30,20 +58,41 @@ import XCTest
         XCTAssertTrue(app.textFields["system-test-field"].waitForExistence(timeout: 10))
 
         let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
-        // The public app-settings URL goes straight to our keyboard switches,
-        // without depending on Settings' changing General-page navigation.
+        // The public app-settings URL is useful, but it does not consistently
+        // expose keyboard management on every iOS Settings version.
         app.buttons["system-test-settings"].tap()
         XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 20))
-        XCTAssertTrue(tap("Keyboards", in: settings), "Open Aukkhor's keyboard switches")
+        evidence("settings-initial-keyboard-install")
+        XCTAssertTrue(openKeyboardSettings(settings), "Open iOS General > Keyboard > Keyboards")
+        evidence("settings-keyboards-list")
         let enabled = settings.switches.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
-        XCTAssertTrue(enabled.waitForExistence(timeout: 10), "Installed extension must be offered by iOS Settings")
-        if enabled.value as? String != "1" {
-            enabled.tap()
+        if enabled.waitForExistence(timeout: 2) {
+            if enabled.value as? String != "1" { enabled.tap() }
+            XCTAssertEqual(enabled.value as? String, "1")
+        } else {
+            // On newer Settings layouts keyboards are rows, not switches.
+            // Install once if needed, then open its Full Access details.
+            var row = settings.cells.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
+            if !row.exists {
+                let add = settings.cells.matching(NSPredicate(format:
+                    "label CONTAINS[c] 'Add New Keyboard'")).firstMatch
+                XCTAssertTrue(add.waitForExistence(timeout: 10), "Add New Keyboard must be available")
+                add.tap()
+                let option = settings.cells.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
+                XCTAssertTrue(option.waitForExistence(timeout: 10), "Aukkhor must be listed as an installed keyboard")
+                option.tap()
+                row = settings.cells.matching(NSPredicate(format: "label CONTAINS[c] 'Aukkhor'")).firstMatch
+            }
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "Aukkhor keyboard row must appear")
+            row.tap()
+            let fullAccess = settings.switches.matching(NSPredicate(format: "label CONTAINS[c] 'Full Access'")).firstMatch
+            XCTAssertTrue(fullAccess.waitForExistence(timeout: 10), "iOS must expose Allow Full Access")
+            if fullAccess.value as? String != "1" { fullAccess.tap() }
             if settings.alerts.buttons["Allow"].waitForExistence(timeout: 1) {
                 settings.alerts.buttons["Allow"].tap()
             }
+            XCTAssertEqual(fullAccess.value as? String, "1")
         }
-        XCTAssertEqual(enabled.value as? String, "1")
         evidence("extension-enabled-in-system-settings")
 
         app.activate()
