@@ -37,7 +37,6 @@ private final class KeyboardSystemTestController: UIViewController {
         KeyboardPreferences.oneHandSide = 2
         KeyboardPreferences.heightScale = 0.9
         KeyboardPreferences.keyHeight = 43
-        KeyboardPreferences.autoCapitalize = false
         AukkhorSettings.defaults.synchronize()
         let background = CAGradientLayer()
         background.colors = [UIColor.systemTeal.cgColor, UIColor.systemPurple.cgColor, UIColor.systemOrange.cgColor]
@@ -120,7 +119,6 @@ private final class KeyboardSystemTestController: UIViewController {
     @State private var suggestions = KeyboardPreferences.suggestions
     @State private var autocorrect = KeyboardPreferences.autocorrect
     @State private var textReplacement = KeyboardPreferences.textReplacement
-    @State private var autoCaps = KeyboardPreferences.autoCapitalize
     @State private var doubleSpace = KeyboardPreferences.doubleSpacePeriod
     @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
     @State private var selectedBackground: PhotosPickerItem?
@@ -151,7 +149,7 @@ private final class KeyboardSystemTestController: UIViewController {
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
                     if keyboardPreset == .clearPrism {
-                        Text("One native clear glass canvas with a lightweight spectral rim and subtle translucent keycaps. iOS controls the real refraction; the colored edge approximates dispersion without per-key glass effects.")
+                        Text("Clear glass uses iOS's refractive material with nearly invisible keycaps. A small lens highlight appears only while pressing a key, without a permanent rainbow frame or per-key glass effects.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     KeyboardThemePreview(revision: previewRevision)
@@ -262,10 +260,8 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: autocorrect) { KeyboardPreferences.autocorrect = $0 }
                     Toggle("iOS text replacements", isOn: $textReplacement)
                         .onChange(of: textReplacement) { KeyboardPreferences.textReplacement = $0 }
-                    Text("Autocorrect and iOS text replacements are independent. To type literally, turn both off. Backspace immediately after expansion restores the shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
+                    Text("Autocorrect is off by default and never changes capitalization. iOS text replacements match their exact shortcut spelling and remain independent. Backspace immediately after expansion restores the shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Automatic capitals", isOn: $autoCaps)
-                        .onChange(of: autoCaps) { KeyboardPreferences.autoCapitalize = $0 }
                     Toggle("Double space for period", isOn: $doubleSpace)
                         .onChange(of: doubleSpace) { KeyboardPreferences.doubleSpacePeriod = $0 }
                     Toggle("Experimental English glide typing", isOn: $experimentalGlide)

@@ -82,6 +82,55 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "omw ")
     }
+    func testNoAutomaticCapitalsAfterPunctuationOrNewlines() {
+        let (keyboard, proxy) = keyboard()
+        KeyboardPreferences.textReplacement = false
+        keyboard.testingTypeCharacter("a")
+        keyboard.testingType(".")
+        keyboard.testingTypeCharacter("b")
+        keyboard.testingType("?")
+        keyboard.testingTypeCharacter("c")
+        keyboard.testingType("\n")
+        keyboard.testingTypeCharacter("d")
+        XCTAssertEqual(proxy.text, "a.b?c\nd")
+        // Manual Shift still affects exactly the next letter.
+        keyboard.tapShift()
+        keyboard.testingTypeCharacter("e")
+        keyboard.testingTypeCharacter("f")
+        XCTAssertEqual(proxy.text, "a.b?c\ndEf")
+    }
+    func testNoUnsolicitedUppercaseOrCaseInsensitiveShortcutExpansion() {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingReplacements = ["auto": "AUTO"]
+        KeyboardPreferences.autocorrect = false
+        keyboard.testingType("Auto")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "Auto ")
+        proxy.text = ""
+        keyboard.testingType("auto")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "AUTO ") // Explicit user shortcut is preserved.
+        KeyboardPreferences.textReplacement = false
+        proxy.text = ""
+        keyboard.testingType("auto")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "auto ")
+    }
+    func testDictionaryCorrectionNeverChangesManualCapitalization() {
+        let (keyboard, proxy) = keyboard()
+        KeyboardPreferences.autocorrect = true
+        KeyboardPreferences.textReplacement = false
+        for word in ["TEH", "Teh", "tEh"] {
+            proxy.text = ""
+            keyboard.testingType(word)
+            keyboard.testingType(" ")
+            XCTAssertEqual(proxy.text, word + " ")
+        }
+        proxy.text = ""
+        keyboard.testingType("teh")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "the ")
+    }
     func testHeldDeleteRepeatsToEmptyAndStopsOnRelease() async throws {
         let (keyboard, proxy) = keyboard()
         proxy.text = "abcdefgh"
@@ -112,6 +161,8 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let all = views(keyboard.view)
         let effects = all.compactMap { $0 as? UIVisualEffectView }
         XCTAssertEqual(effects.count, 1)
+        let lens = try XCTUnwrap(all.compactMap { $0 as? KeyboardPressLensView }.first)
+        XCTAssertTrue(lens.isHidden) // No permanent rainbow border.
         XCTAssertFalse(KeyboardPreferences.usesSystemCanvas)
         XCTAssertEqual(KeyboardPreferences.glassTintStrength, 0)
         if #available(iOS 26.0, *) {
@@ -121,5 +172,11 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(all.compactMap { $0 as? UIButton }.allSatisfy {
             !$0.subviews.contains { $0 is UIVisualEffectView }
         })
+        let letter = try XCTUnwrap(all.compactMap { $0 as? KeyboardButton }
+            .first(where: { $0.title(for: .normal) == "q" }))
+        letter.isHighlighted = true
+        XCTAssertFalse(lens.isHidden)
+        letter.isHighlighted = false
+        XCTAssertTrue(lens.isHidden)
     }
 }

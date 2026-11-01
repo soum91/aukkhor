@@ -13,8 +13,6 @@ private struct TypingOptions {
     let haptics = KeyboardPreferences.haptics
     let sounds = KeyboardPreferences.keySounds
     let suggestions = KeyboardPreferences.suggestions
-    let autocorrect = KeyboardPreferences.autocorrect
-    let autoCaps = KeyboardPreferences.autoCapitalize
     let doubleSpace = KeyboardPreferences.doubleSpacePeriod
     let glide = KeyboardPreferences.experimentalGlide
 }
@@ -73,13 +71,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
     override var textDocumentProxy: UITextDocumentProxy { testingProxy ?? super.textDocumentProxy }
     func testingType(_ text: String) { type(text) }
+    func testingTypeCharacter(_ character: String) { typeCharacter(character) }
     func testingDelete() { backspace() }
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
-    private let prismEdge = KeyboardPrismEdgeView()
+    private let pressLens = KeyboardPressLensView()
+    private weak var highlightedLensButton: KeyboardButton?
     // Keep every control in a plain view above the decorative material. An
     // effectless UIVisualEffectView can still install private hit-test views
     // when UIKit moves a keyboard extension between remote host windows.
@@ -142,9 +142,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glassBackdrop.clipsToBounds = true
         glassBackdrop.isUserInteractionEnabled = false
         surface.addSubview(glassBackdrop)
-        prismEdge.translatesAutoresizingMaskIntoConstraints = false
-        prismEdge.accessibilityIdentifier = "keyboard.prismEdge"
-        surface.addSubview(prismEdge)
+        pressLens.accessibilityIdentifier = "keyboard.pressLens"
+        surface.addSubview(pressLens)
         interactionHost.translatesAutoresizingMaskIntoConstraints = false
         interactionHost.backgroundColor = .clear
         interactionHost.isOpaque = false
@@ -156,12 +155,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
             glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
-        ])
-        NSLayoutConstraint.activate([
-            prismEdge.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
-            prismEdge.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
-            prismEdge.topAnchor.constraint(equalTo: surface.topAnchor),
-            prismEdge.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             interactionHost.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -212,7 +205,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if !isPreview {
         requestSupplementaryLexicon { [weak self] lexicon in
             DispatchQueue.main.async {
-                self?.replacements = Dictionary(lexicon.entries.map { ($0.userInput.lowercased(), $0.documentText) },
+                self?.replacements = Dictionary(lexicon.entries.map { ($0.userInput, $0.documentText) },
                                                  uniquingKeysWith: { _, newer in newer })
                 self?.suggestionRequestKey = nil
                 self?.refreshSuggestions()
@@ -320,6 +313,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true,
                             immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
+        button.usesPressLens = KeyboardPreferences.preset == .clearPrism
+        if button.usesPressLens {
+            button.onHighlightChanged = { [weak self] highlighted, key in
+                self?.updatePressLens(for: key, highlighted: highlighted)
+            }
+        }
         button.setTitle(title, for: .normal)
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
                        "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
@@ -366,6 +365,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return button
+    }
+
+    private func updatePressLens(for key: KeyboardButton, highlighted: Bool) {
+        if highlighted {
+            highlightedLensButton = key
+            pressLens.display(over: key.convert(key.bounds, to: surface))
+        } else if highlightedLensButton === key {
+            highlightedLensButton = nil
+            pressLens.isHidden = true
+        }
     }
 
     private func row(_ items: [(String, () -> Void)], immediateInput: Bool = false) -> UIStackView {
@@ -570,6 +579,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func buildKeys() {
         stopDelete()
+        highlightedLensButton = nil
+        pressLens.isHidden = true
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
@@ -578,7 +589,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         letterButtons.removeAll()
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
-        prismEdge.isHidden = KeyboardPreferences.preset != .clearPrism || UIAccessibility.isReduceTransparencyEnabled
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
         hasPhotoBackground = backgroundImageView.image != nil
@@ -931,13 +941,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard allowShortcuts || allowCorrection else { return }
         let current = currentWord()
         guard !current.isEmpty, current != suppressedReplacement else { return }
-        let shortcut = allowShortcuts ? replacements[current.lowercased()] : nil
-        let suggestion = shortcut ?? (allowCorrection ? KeyboardSuggestions.correction(current, replacements: [:]) : nil)
+        // System text shortcuts are explicit, case-sensitive user choices.
+        // Don't turn "auto" into "AUTO" (or vice versa) by normalizing them.
+        let shortcut = allowShortcuts ? replacements[current] : nil
+        // Never autocorrect acronyms, mixed-case words, or manual Shift input.
+        let suggestion = shortcut ?? (allowCorrection && current == current.lowercased()
+            ? KeyboardSuggestions.correction(current, replacements: [:]) : nil)
         guard let suggestion, suggestion != current else { return }
-        let capitalized = current.first?.isUppercase == true
-            ? suggestion.prefix(1).uppercased() + String(suggestion.dropFirst()) : suggestion
-        replaceWord(current, with: capitalized)
-        pendingReplacement = (current, capitalized + delimiter, textDocumentProxy.documentIdentifier)
+        replaceWord(current, with: suggestion)
+        pendingReplacement = (current, suggestion + delimiter, textDocumentProxy.documentIdentifier)
     }
 
     private func applySuggestion(_ value: String) {
@@ -1077,7 +1089,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             textDocumentProxy.deleteBackward()
             textDocumentProxy.insertText(". ")
             lastSpaceTap = .distantPast
-            if typingOptions.autoCaps && !capsLock { shift = true; refreshShiftKeys() }
             return
         }
         if value == " " { lastSpaceTap = Date() }
@@ -1098,9 +1109,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             commitBuffer()
             textDocumentProxy.insertText(value)
             if mode == .english && !symbols {
-                if value == "." || value == "!" || value == "?" || value == "\n" {
-                    if typingOptions.autoCaps && !capsLock { shift = true; refreshShiftKeys() }
-                } else if value.count == 1 && value.first?.isLetter == true && shift && !capsLock {
+                if value.count == 1 && value.first?.isLetter == true && shift && !capsLock {
                     shift = false
                     refreshShiftKeys()
                 }

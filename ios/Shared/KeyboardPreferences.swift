@@ -139,10 +139,6 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardTextReplacement") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardTextReplacement") }
     }
-    static var autoCapitalize: Bool {
-        get { data.object(forKey: "keyboardAutoCaps") as? Bool ?? true }
-        set { data.set(newValue, forKey: "keyboardAutoCaps") }
-    }
     static var doubleSpacePeriod: Bool {
         get { data.object(forKey: "keyboardDoubleSpace") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardDoubleSpace") }
@@ -230,7 +226,7 @@ struct KeyboardPalette {
         case .clearPrism:
             return .init(background: .clear, key: .white, secondaryKey: .white,
                          foreground: .white, muted: UIColor.white.withAlphaComponent(0.7),
-                         accent: .cyan, border: .white)
+                         accent: .white, border: .white)
         case .liquidGlass:
             return .init(background: UIColor(keyboardHex: "#11131A"), key: UIColor(keyboardHex: "#353B48"),
                          secondaryKey: UIColor(keyboardHex: "#4C5362"), foreground: .white,
@@ -339,11 +335,12 @@ enum KeyboardKeyAppearance {
         // effect for every key is expensive in the keyboard extension process.
         // Simple translucent fills preserve user colors/opacity without adding
         // dozens of independent backdrop captures and touch animations.
-        let opacity = KeyboardPreferences.keyOpacity * (KeyboardPreferences.preset == .clearPrism ? 0.12 : 1)
+        let clearPrism = KeyboardPreferences.preset == .clearPrism
+        let opacity = KeyboardPreferences.keyOpacity * (clearPrism ? 0.05 : 1)
         button.backgroundColor = color.withAlphaComponent(opacity)
         if KeyboardPreferences.keycapStyle == 0 {
-            button.layer.borderWidth = glass ? 0.5 : 0.25
-            button.layer.borderColor = palette.border.withAlphaComponent(0.4).cgColor
+            button.layer.borderWidth = clearPrism ? 0.35 : (glass ? 0.5 : 0.25)
+            button.layer.borderColor = palette.border.withAlphaComponent(clearPrism ? 0.18 : 0.4).cgColor
         }
     }
 }
@@ -354,6 +351,8 @@ final class KeyboardButton: UIButton {
     // Touch-down insertion is quicker than waiting for a lift. Keep a guard
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
+    var usesPressLens = false
+    var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
@@ -363,8 +362,16 @@ final class KeyboardButton: UIButton {
         didSet {
             guard oldValue != isHighlighted else { return }
             // Avoid changing opacity of the entire key/material subtree.
-            titleLabel?.alpha = isHighlighted ? 0.55 : 1
-            imageView?.alpha = isHighlighted ? 0.55 : 1
+            let pressedAlpha: CGFloat = usesPressLens ? 0.75 : 0.55
+            titleLabel?.alpha = isHighlighted ? pressedAlpha : 1
+            imageView?.alpha = isHighlighted ? pressedAlpha : 1
+            if usesPressLens {
+                let magnification: CGFloat = isHighlighted ? 1.09 : 1
+                let transform = CGAffineTransform(scaleX: magnification, y: magnification)
+                titleLabel?.transform = transform
+                imageView?.transform = transform
+            }
+            onHighlightChanged?(isHighlighted, self)
         }
     }
     override func layoutSubviews() {
@@ -375,39 +382,49 @@ final class KeyboardButton: UIButton {
     }
 }
 
-// A single inexpensive spectral edge for Clear Prism. The actual refraction
-// remains UIKit's clear material; no effects or touch handlers are put on keys.
-final class KeyboardPrismEdgeView: UIView {
-    private let spectrum = CAGradientLayer()
-    private let outline = CAShapeLayer()
+// One light, transient highlight, shared by all keys. The underlying iOS 26+
+// clear glass material is the real refractive surface. Never add a permanent
+// rainbow border or dozens of live glass views to this keyboard extension.
+final class KeyboardPressLensView: UIView {
+    private let specular = CAGradientLayer()
+    private let rim = CAShapeLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
+        isHidden = true
         backgroundColor = .clear
-        spectrum.colors = [UIColor.systemCyan.withAlphaComponent(0.08).cgColor,
-                           UIColor.systemPink.withAlphaComponent(0.65).cgColor,
-                           UIColor.white.withAlphaComponent(0.8).cgColor,
-                           UIColor.systemTeal.withAlphaComponent(0.65).cgColor,
-                           UIColor.systemPurple.withAlphaComponent(0.12).cgColor]
-        spectrum.startPoint = CGPoint(x: 0, y: 0.25)
-        spectrum.endPoint = CGPoint(x: 1, y: 0.75)
-        layer.addSublayer(spectrum)
-        outline.fillColor = UIColor.clear.cgColor
-        outline.strokeColor = UIColor.black.cgColor
-        outline.lineWidth = 1.5
-        spectrum.mask = outline
+        specular.colors = [UIColor.white.withAlphaComponent(0.4).cgColor,
+                           UIColor.white.withAlphaComponent(0.07).cgColor,
+                           UIColor.white.withAlphaComponent(0.03).cgColor,
+                           UIColor.systemCyan.withAlphaComponent(0.13).cgColor]
+        specular.locations = [0, 0.24, 0.8, 1]
+        specular.startPoint = CGPoint(x: 0, y: 0)
+        specular.endPoint = CGPoint(x: 1, y: 1)
+        layer.addSublayer(specular)
+        rim.fillColor = UIColor.clear.cgColor
+        rim.strokeColor = UIColor.white.withAlphaComponent(0.32).cgColor
+        rim.lineWidth = 1
+        specular.mask = rim
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func display(over keyRect: CGRect) {
+        // The specular only appears during a press. It sits behind the touch
+        // host, so it cannot block or defer any character insertion.
+        frame = keyRect.insetBy(dx: -6, dy: -7)
+        isHidden = false
+        setNeedsLayout()
+    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        spectrum.frame = bounds
-        outline.frame = bounds
-        outline.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
-                                    cornerRadius: 19).cgPath
+        specular.frame = bounds
+        rim.frame = bounds
+        rim.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
+                               cornerRadius: bounds.height / 2).cgPath
         CATransaction.commit()
     }
 }
