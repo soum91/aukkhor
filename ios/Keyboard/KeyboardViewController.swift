@@ -595,7 +595,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
         suggestionRequestKey = nil
-        palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
+        // A dark host app can request a light keyboard (Spotlight does this).
+        // Prefer the text field's keyboard appearance over the host theme.
+        let keyboardDark: Bool
+        if let appearance = textDocumentProxy.keyboardAppearance {
+            switch appearance {
+            case .dark: keyboardDark = true
+            case .light: keyboardDark = false
+            default: keyboardDark = traitCollection.userInterfaceStyle == .dark
+            }
+        } else { keyboardDark = traitCollection.userInterfaceStyle == .dark }
+        palette = KeyboardPalette.selected(dark: keyboardDark)
         letterButtons.removeAll()
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
@@ -712,31 +722,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildAppearancePanel() {
-        // Keep the configuration page inside the keyboard's normal footprint.
-        // Growing the entire input view created a large, dark iOS-owned footer
-        // below our custom panel and made relayout expensive.
-        let scroll = UIScrollView()
-        scroll.accessibilityIdentifier = "keyboard.settingsScroll"
-        scroll.alwaysBounceVertical = true
-        scroll.showsVerticalScrollIndicator = true
-        let options = UIStackView()
-        options.axis = .vertical
-        options.spacing = KeyboardPreferences.rowGap
-        options.translatesAutoresizingMaskIntoConstraints = false
-        scroll.addSubview(options)
-        NSLayoutConstraint.activate([
-            options.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
-            options.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
-            options.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
-            options.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
-            options.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
-        ])
-        let viewport = max(KeyboardPreferences.rowHeight * 2,
-                           KeyboardPreferences.typingHeight - 24 - KeyboardPreferences.rowHeight
-                           - 2 * KeyboardPreferences.rowGap)
-        scroll.heightAnchor.constraint(equalToConstant: viewport).isActive = true
-        stack.addArrangedSubview(scroll)
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             (KeyboardPreferences.autocorrect ? "Autocorrect: On" : "Autocorrect: Off", { [weak self] in
                 KeyboardPreferences.autocorrect.toggle(); self?.buildKeys()
             }),
@@ -744,16 +730,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardPreferences.textReplacement.toggle(); self?.buildKeys()
             })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             (AukkhorSettings.keyboardClipboardEnabled ? "Windows tools: On" : "Windows tools: Off", { [weak self] in
                 AukkhorSettings.keyboardClipboardEnabled.toggle(); self?.buildKeys()
             })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             ("Theme: " + KeyboardPreferences.preset.title, { [weak self] in self?.cycleTheme() }),
             ("Done", { [weak self] in self?.settingsPanel = false; self?.buildKeys() })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             (["Keycaps: Normal", "Keycaps: Borderless", "Keycaps: None"][KeyboardPreferences.keycapStyle], { [weak self] in
                 KeyboardPreferences.keycapStyle = (KeyboardPreferences.keycapStyle + 1) % 3
                 self?.buildKeys()
@@ -762,18 +748,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardPreferences.numberRow.toggle(); self?.buildKeys()
             })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
             ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
             (KeyboardPreferences.glassEnabled ? "Glass: On" : "Glass: Off", { [weak self] in
                 KeyboardPreferences.setGlassEnabled(!KeyboardPreferences.glassEnabled); self?.buildKeys()
             })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             ("Opacity −", { [weak self] in KeyboardPreferences.keyOpacity -= 0.1; self?.buildKeys() }),
             ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
         ]))
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             (KeyboardPreferences.usesSystemCanvas ? "Background: iOS" : "Background: Custom", { [weak self] in
                 guard KeyboardPreferences.preset != .clearPrism else {
                     self?.show("Clear Prism always blends with the iOS keyboard background")
@@ -786,7 +772,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             })
         ]))
         if !KeyboardPreferences.seamlessBackground {
-        options.addArrangedSubview(row([
+        stack.addArrangedSubview(row([
             (KeyboardPreferences.clearGlass ? "Clear glass" : "Frosted glass", { [weak self] in
                 KeyboardPreferences.clearGlass.toggle(); self?.buildKeys()
             }),
@@ -803,7 +789,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         colors.distribution = .fillEqually
         colors.spacing = 4
         colors.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        options.addArrangedSubview(colors)
+        stack.addArrangedSubview(colors)
 
     }
 

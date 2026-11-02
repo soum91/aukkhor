@@ -227,9 +227,13 @@ struct KeyboardPalette {
                          muted: UIColor(keyboardHex: "#A0A0A0"), accent: .white,
                          border: UIColor(keyboardHex: "#333333"))
         case .clearPrism:
-            return .init(background: .clear, key: .white, secondaryKey: .white,
-                         foreground: .white, muted: UIColor.white.withAlphaComponent(0.7),
-                         accent: .white, border: .white)
+            // The iOS-owned keyboard plate can be light even over a dark app.
+            // Follow the keyboard's appearance so labels never disappear on a
+            // white backing surface like the Spotlight keyboard.
+            let ink: UIColor = dark ? .white : .black
+            return .init(background: .clear, key: ink, secondaryKey: ink,
+                         foreground: ink, muted: ink.withAlphaComponent(0.7),
+                         accent: ink, border: ink)
         case .liquidGlass:
             return .init(background: UIColor(keyboardHex: "#11131A"), key: UIColor(keyboardHex: "#353B48"),
                          secondaryKey: UIColor(keyboardHex: "#4C5362"), foreground: .white,

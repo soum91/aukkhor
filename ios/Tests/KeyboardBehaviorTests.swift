@@ -201,7 +201,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         letter.isHighlighted = false
         XCTAssertTrue(lens.isHidden)
     }
-    func testSettingsUseKeyboardHeightAndCriticalKeysInsertOnTouchDown() throws {
+    func testExpandedSettingsAndCriticalKeysInsertOnTouchDown() throws {
         KeyboardPreferences.preset = .clearPrism
         KeyboardPreferences.numberRow = true
         let keyboard = KeyboardViewController()
@@ -210,16 +210,25 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let expectedHeight = KeyboardPreferences.typingHeight
         keyboard.toggleAppearancePanel()
         let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
-        XCTAssertEqual(root.contentHeight, expectedHeight, accuracy: 0.5,
-                       "Settings should scroll instead of expanding the dark keyboard footer")
+        XCTAssertGreaterThan(root.contentHeight, expectedHeight,
+                             "Keep the user's original expanded settings page")
         func views(_ parent: UIView) -> [UIView] { [parent] + parent.subviews.flatMap(views) }
         let all = views(keyboard.view)
-        XCTAssertNotNil(all.first { $0.accessibilityIdentifier == "keyboard.settingsScroll" })
+        XCTAssertNil(all.first { $0.accessibilityIdentifier == "keyboard.settingsScroll" })
         keyboard.toggleAppearancePanel()
         for label in ["q", "a", "z", "Space", "return"] {
             let key = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? KeyboardButton }
                 .first(where: { $0.accessibilityLabel == label }))
             XCTAssertTrue(key.insertsOnTouchDown, "\(label) must not wait for finger release")
         }
+    }
+    func testClearPrismKeyInkAdaptsToLightAndDarkKeyboard() {
+        KeyboardPreferences.preset = .clearPrism
+        let light = KeyboardPalette.selected(dark: false)
+        let dark = KeyboardPalette.selected(dark: true)
+        XCTAssertEqual(light.foreground, UIColor.black)
+        XCTAssertEqual(light.border, UIColor.black)
+        XCTAssertEqual(dark.foreground, UIColor.white)
+        XCTAssertEqual(dark.border, UIColor.white)
     }
 }
