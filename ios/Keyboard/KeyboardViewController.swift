@@ -201,7 +201,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             banner.heightAnchor.constraint(equalToConstant: 24)
         ])
         let preferredHeight = view.heightAnchor.constraint(equalToConstant: KeyboardPreferences.typingHeight)
-        preferredHeight.priority = UILayoutPriority(999)
+        // This is our primary input view's height, not an optional suggestion:
+        // a weak constraint can leave the expanded settings clipped at typing height.
+        preferredHeight.priority = .required
         preferredHeight.isActive = true
         keyboardHeightConstraint = preferredHeight
         glideRecognizer.isEnabled = typingOptions.glide
@@ -689,15 +691,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.isHidden = true
         refreshShiftKeys()
         refreshSuggestions()
-        // Fit settings/emoji content without a separate hard-coded panel height.
+        // Expanded settings must show every control at once, without a scroll view.
+        // Measuring a vertically constrained stack during a key press can return
+        // its *old* compressed height. Count the fixed-height rows explicitly.
         let availableWidth = max(160, view.bounds.width - 8)
         let keyWidth = oneHandSide == 0 && !toolsExpanded ? availableWidth : availableWidth * 0.82 - 6
         let contentHeight = stack.systemLayoutSizeFitting(
             CGSize(width: keyWidth, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
-        let height = max(KeyboardPreferences.typingHeight, contentHeight)
+        let settingsRows: CGFloat = KeyboardPreferences.seamlessBackground ? 7 : 8
+        let settingsContentHeight = 24 + (settingsRows + 1) * KeyboardPreferences.rowHeight + 36
+            + (settingsRows + 2) * KeyboardPreferences.rowGap
+        let height = max(KeyboardPreferences.typingHeight,
+                         settingsPanel ? settingsContentHeight : contentHeight)
         keyboardHeightConstraint?.constant = height
         (inputView as? KeyboardInputView)?.contentHeight = height
+        view.setNeedsUpdateConstraints()
+        view.superview?.setNeedsLayout()
     }
 
     private func colorControl(_ title: String, set: @escaping (String) -> Void) -> UIButton {
@@ -761,13 +771,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         ]))
         stack.addArrangedSubview(row([
             (KeyboardPreferences.usesSystemCanvas ? "Background: iOS" : "Background: Custom", { [weak self] in
-                guard KeyboardPreferences.preset != .clearPrism else {
-                    self?.show("Clear Prism always blends with the iOS keyboard background")
-                    return
-                }
-                let seamless = !KeyboardPreferences.usesSystemCanvas
-                KeyboardPreferences.seamlessBackground = seamless
-                if seamless { KeyboardPreferences.setGlassEnabled(true) }
+                let system = !KeyboardPreferences.usesSystemCanvas
+                KeyboardPreferences.seamlessBackground = system
+                if system { KeyboardPreferences.setGlassEnabled(true) }
                 self?.buildKeys()
             })
         ]))

@@ -79,14 +79,11 @@ enum KeyboardPreferences {
     }
     static var glassEnabled: Bool { preset == .liquidGlass || preset == .clearPrism || usesGlass }
     static var seamlessBackground: Bool {
-        // A keyboard extension cannot paint the iOS-owned globe/footer strip.
-        // Clear Prism must use the same system plate as that strip, even when
-        // an older build saved the separate/custom background setting.
-        get { preset == .clearPrism || (data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true) }
-        set { data.set(preset == .clearPrism ? true : newValue, forKey: "keyboardSeamlessBackground") }
+        get { data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardSeamlessBackground") }
     }
     static var usesSystemCanvas: Bool {
-        seamlessBackground && (preset == .system || glassEnabled)
+        preset != .clearPrism && seamlessBackground && (preset == .system || glassEnabled)
     }
     static func setGlassEnabled(_ enabled: Bool) {
         usesGlass = enabled
@@ -227,13 +224,9 @@ struct KeyboardPalette {
                          muted: UIColor(keyboardHex: "#A0A0A0"), accent: .white,
                          border: UIColor(keyboardHex: "#333333"))
         case .clearPrism:
-            // The iOS-owned keyboard plate can be light even over a dark app.
-            // Follow the keyboard's appearance so labels never disappear on a
-            // white backing surface like the Spotlight keyboard.
-            let ink: UIColor = dark ? .white : .black
-            return .init(background: .clear, key: ink, secondaryKey: ink,
-                         foreground: ink, muted: ink.withAlphaComponent(0.7),
-                         accent: ink, border: ink)
+            return .init(background: .clear, key: .white, secondaryKey: .white,
+                         foreground: .white, muted: UIColor.white.withAlphaComponent(0.7),
+                         accent: .white, border: .white)
         case .liquidGlass:
             return .init(background: UIColor(keyboardHex: "#11131A"), key: UIColor(keyboardHex: "#353B48"),
                          secondaryKey: UIColor(keyboardHex: "#4C5362"), foreground: .white,
@@ -284,15 +277,12 @@ struct KeyboardPalette {
         // This view is decoration only. Controls live in a plain sibling above
         // it so UIKit's private glass/backdrop views can never swallow taps.
         effectView.isUserInteractionEnabled = false
-        // UIKit already paints the keyboard plate, including the globe area.
-        // A second, rounded material confined to the extension creates a seam
-        // and an expensive extra backdrop capture on every keyboard update.
+        // The host plate is used only when the user explicitly selects it.
+        // Clear Prism retains the separate rounded material used in build 61.
         let systemCanvas = KeyboardPreferences.usesSystemCanvas
         surface.layer.cornerRadius = systemCanvas ? 0 : 20
         effectView.layer.cornerRadius = systemCanvas ? 0 : 20
         if systemCanvas {
-            // One clear host-owned material across the typing area and iOS
-            // globe strip. No opaque second layer and no live UIGlassEffect.
             effectView.effect = nil
             effectView.overrideUserInterfaceStyle = .unspecified
             surface.backgroundColor = .clear
@@ -479,7 +469,12 @@ final class KeyboardInteractionView: UIView {
 final class KeyboardInputView: UIInputView {
     var contentHeight: CGFloat = KeyboardPreferences.typingHeight {
         didSet {
-            if abs(oldValue - contentHeight) > 0.5 { invalidateIntrinsicContentSize() }
+            if abs(oldValue - contentHeight) > 0.5 {
+                invalidateIntrinsicContentSize()
+                setNeedsUpdateConstraints()
+                setNeedsLayout()
+                superview?.setNeedsLayout()
+            }
         }
     }
     override var intrinsicContentSize: CGSize {

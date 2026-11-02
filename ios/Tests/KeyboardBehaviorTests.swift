@@ -170,12 +170,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(-301), enabledAt: enabled, now: now))
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(5), enabledAt: enabled, now: now))
     }
-    func testClearPrismUsesSeamlessSystemCanvasAndTransientLens() throws {
+    func testClearPrismRestoresBuild61RefractiveCanvasAndTransientLens() throws {
         KeyboardPreferences.preset = .clearPrism
         KeyboardPreferences.keycapStyle = 0
-        // Migrate devices that saved "Background: Custom" in an older build.
+        // Build 62 silently forced system blending and removed Clear Prism's glass.
         KeyboardPreferences.seamlessBackground = false
-        XCTAssertTrue(KeyboardPreferences.seamlessBackground)
+        XCTAssertFalse(KeyboardPreferences.seamlessBackground)
         let keyboard = KeyboardViewController()
         keyboard.isPreview = true
         keyboard.loadViewIfNeeded()
@@ -185,11 +185,16 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(effects.count, 1)
         let lens = try XCTUnwrap(all.compactMap { $0 as? KeyboardPressLensView }.first)
         XCTAssertTrue(lens.isHidden) // No permanent rainbow border.
-        XCTAssertTrue(KeyboardPreferences.usesSystemCanvas)
+        XCTAssertFalse(KeyboardPreferences.usesSystemCanvas)
         XCTAssertEqual(KeyboardPreferences.glassTintStrength, 0)
-        XCTAssertNil(effects.first?.effect, "No second full-screen glass layer should reintroduce lag")
+        if #available(iOS 26.0, *) {
+            let glass = try XCTUnwrap(effects.first?.effect as? UIGlassEffect)
+            XCTAssertFalse(glass.isInteractive, "Glass is decorative and cannot delay key events")
+        } else {
+            XCTAssertTrue(effects.first?.effect is UIBlurEffect)
+        }
         let surface = try XCTUnwrap(all.first { $0.accessibilityIdentifier == "keyboard.surface" })
-        XCTAssertEqual(surface.layer.cornerRadius, 0)
+        XCTAssertEqual(surface.layer.cornerRadius, 20)
         XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0)
         XCTAssertTrue(all.compactMap { $0 as? UIButton }.allSatisfy {
             !$0.subviews.contains { $0 is UIVisualEffectView }
@@ -210,8 +215,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let expectedHeight = KeyboardPreferences.typingHeight
         keyboard.toggleAppearancePanel()
         let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
-        XCTAssertGreaterThan(root.contentHeight, expectedHeight,
-                             "Keep the user's original expanded settings page")
+        let settingsRows: CGFloat = KeyboardPreferences.seamlessBackground ? 7 : 8
+        let settingsHeight = 24 + (settingsRows + 1) * KeyboardPreferences.rowHeight + 36
+            + (settingsRows + 2) * KeyboardPreferences.rowGap
+        XCTAssertGreaterThan(settingsHeight, expectedHeight)
+        XCTAssertEqual(root.contentHeight, settingsHeight, accuracy: 1,
+                       "Expanded settings must request its complete height, never typing height")
         func views(_ parent: UIView) -> [UIView] { [parent] + parent.subviews.flatMap(views) }
         let all = views(keyboard.view)
         XCTAssertNil(all.first { $0.accessibilityIdentifier == "keyboard.settingsScroll" })
@@ -222,12 +231,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             XCTAssertTrue(key.insertsOnTouchDown, "\(label) must not wait for finger release")
         }
     }
-    func testClearPrismKeyInkAdaptsToLightAndDarkKeyboard() {
+    func testClearPrismRestoresBuild61KeyInk() {
         KeyboardPreferences.preset = .clearPrism
         let light = KeyboardPalette.selected(dark: false)
         let dark = KeyboardPalette.selected(dark: true)
-        XCTAssertEqual(light.foreground, UIColor.black)
-        XCTAssertEqual(light.border, UIColor.black)
+        XCTAssertEqual(light.foreground, UIColor.white)
+        XCTAssertEqual(light.border, UIColor.white)
         XCTAssertEqual(dark.foreground, UIColor.white)
         XCTAssertEqual(dark.border, UIColor.white)
     }
