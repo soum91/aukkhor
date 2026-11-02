@@ -351,12 +351,13 @@ final class KeyboardButton: UIButton {
     // Touch-down insertion is quicker than waiting for a lift. Keep a guard
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
+    var insertsOnTouchDown = false
     var usesPressLens = false
     var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.insetBy(dx: -6, dy: -6).contains(point)
+        bounds.insetBy(dx: -8, dy: -9).contains(point)
     }
     override var isHighlighted: Bool {
         didSet {
@@ -451,7 +452,7 @@ final class KeyboardInteractionView: UIView {
                     let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
                     let distance = dx * dx + dy * dy
-                    if dx <= 6 && dy <= 6 && distance < nearestDistance {
+                    if dx <= 10 && dy <= 10 && distance < nearestDistance {
                         nearest = key
                         nearestDistance = distance
                     }

@@ -61,6 +61,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var deleteTimer: Timer?
     private var deleteHeld = false
     private var deleteTicks = 0
+    private enum SpaceTouchResult { case ordinary, doubleSpacePeriod }
+    private var spaceTouchResult: SpaceTouchResult?
     private var pendingReplacement: (original: String, inserted: String, document: UUID)?
     private var suppressedReplacement: String?
     #if DEBUG
@@ -72,6 +74,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override var textDocumentProxy: UITextDocumentProxy { testingProxy ?? super.textDocumentProxy }
     func testingType(_ text: String) { type(text) }
     func testingTypeCharacter(_ character: String) { typeCharacter(character) }
+    func testingTouchDownSpace() { typeSpaceFromTouchDown() }
+    func testingBeginSpaceCaret() { undoSpaceForCaretMovement() }
     func testingDelete() { backspace() }
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
@@ -243,6 +247,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopDelete()
+        spaceTouchResult = nil
         if !isPreview { ScreenshotClipboard.shared.stop() }
     }
 
@@ -313,6 +318,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true,
                             immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
+        button.insertsOnTouchDown = immediateInput || title == "⌫"
         button.usesPressLens = KeyboardPreferences.preset == .clearPrism
         if button.usesPressLens {
             button.onHighlightChanged = { [weak self] highlighted, key in
@@ -359,6 +365,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }, for: .touchUpInside)
             button.addAction(UIAction { [weak button] _ in button?.immediateActionTriggered = false },
                              for: [.touchUpOutside, .touchCancel])
+            if title == "Space" {
+                button.addAction(UIAction { [weak self] _ in self?.spaceTouchResult = nil },
+                                 for: [.touchUpInside, .touchUpOutside])
+            }
         } else {
             button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
         }
@@ -630,7 +640,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self?.clipboardPanel = false; self?.settingsPanel = false; self?.buildKeys()
             }),
             ("😊", { [weak self] in self?.toggleEmoji() }),
-            ("Space", { [weak self] in self?.type(" ") }),
+            ("Space", { [weak self] in self?.typeSpaceFromTouchDown() }),
             ("return", { [weak self] in self?.type("\n") })
         ]
         if needsEditingKeys {
@@ -646,7 +656,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         bottom.spacing = KeyboardPreferences.keySpacing
         bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         for (label, action) in bottomControls {
-            let button = makeButton(label, action: action)
+            let button = makeButton(label, action: action,
+                                    immediateInput: label == "Space" || label == "return")
             bottom.addArrangedSubview(button)
             if label == "Space" {
                 button.setTitle(mode == .english ? "space" : mode.label, for: .normal)
@@ -1040,12 +1051,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                                     bangla: self.mode == .bangla)
         }
         contextRefreshWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
         switch recognizer.state {
         case .began:
+            undoSpaceForCaretMovement()
             commitBuffer()
             dragCaretOffset = 0
             dragStartX = recognizer.location(in: recognizer.view).x
@@ -1070,6 +1082,30 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         symbols = false; shift = false; capsLock = false
         emojiMode = false; clipboardPanel = false
         buildKeys()
+    }
+
+    private func typeSpaceFromTouchDown() {
+        let searchingEmoji = emojiMode && emojiSearch
+        type(" ")
+        if !searchingEmoji {
+            spaceTouchResult = lastSpaceTap == .distantPast ? .doubleSpacePeriod : .ordinary
+        }
+    }
+
+    private func undoSpaceForCaretMovement() {
+        guard let inserted = spaceTouchResult else { return }
+        spaceTouchResult = nil
+        switch inserted {
+        case .ordinary:
+            // A long press should move the caret, not leave an extra Space
+            // or a newly expanded text replacement behind.
+            backspace(refresh: false)
+        case .doubleSpacePeriod:
+            textDocumentProxy.deleteBackward()
+            textDocumentProxy.deleteBackward()
+            textDocumentProxy.insertText(" ")
+        }
+        lastSpaceTap = .distantPast
     }
 
     private func type(_ value: String) {
