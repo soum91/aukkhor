@@ -1,5 +1,5 @@
-# Owner-authorized one-off release: build 74 compiled and passed its behavior
-# tests, but iOS 27 Simulator could not activate the unsigned keyboard.
+# Owner-authorized Clear Prism preview: build 76 passed the new whole-panel lens
+# behavior and layout tests; iOS 27 unsigned keyboard activation is unverified.
 # Its source is unchanged in this [publish-unverified] packaging-only run.
 name: Aukkhor iOS unsigned build
 on:
