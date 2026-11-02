@@ -303,6 +303,10 @@ private final class KeyboardHostField: UITextField {
         XCTAssertGreaterThan(root.bounds.height, initialHeight + 150,
                              "UIKit must expand the *visible* input view, not merely record a desired height")
         XCTAssertEqual(root.bounds.height, root.contentHeight, accuracy: 1)
+        if let presentation = root.superview {
+            XCTAssertGreaterThanOrEqual(presentation.bounds.height, root.bounds.height - 1,
+                                        "The UIKit presentation must also grow, not clip an oversized child")
+        }
         for title in ["Keycaps: Normal", "Opacity −", "Background: iOS", "Text", "space"] {
             let button = try XCTUnwrap(buttons(in: root).first { $0.title(for: .normal) == title },
                                        "Missing settings control: \(title)")

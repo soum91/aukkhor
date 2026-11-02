@@ -171,6 +171,14 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(5), enabledAt: enabled, now: now))
     }
     func testClearPrismRestoresBuild61RefractiveCanvasAndTransientLens() throws {
+        let savedPreset = KeyboardPreferences.preset
+        let savedStyle = KeyboardPreferences.keycapStyle
+        let savedSeamless = KeyboardPreferences.seamlessBackground
+        defer {
+            KeyboardPreferences.preset = savedPreset
+            KeyboardPreferences.keycapStyle = savedStyle
+            KeyboardPreferences.seamlessBackground = savedSeamless
+        }
         KeyboardPreferences.preset = .clearPrism
         KeyboardPreferences.keycapStyle = 0
         // Build 62 silently forced system blending and removed Clear Prism's glass.
@@ -207,6 +215,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(lens.isHidden)
     }
     func testExpandedSettingsAndCriticalKeysInsertOnTouchDown() throws {
+        let savedPreset = KeyboardPreferences.preset
+        let savedNumberRow = KeyboardPreferences.numberRow
+        defer {
+            KeyboardPreferences.preset = savedPreset
+            KeyboardPreferences.numberRow = savedNumberRow
+        }
         KeyboardPreferences.preset = .clearPrism
         KeyboardPreferences.numberRow = true
         let keyboard = KeyboardViewController()
@@ -232,6 +246,8 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         }
     }
     func testClearPrismRestoresBuild61KeyInk() {
+        let savedPreset = KeyboardPreferences.preset
+        defer { KeyboardPreferences.preset = savedPreset }
         KeyboardPreferences.preset = .clearPrism
         let light = KeyboardPalette.selected(dark: false)
         let dark = KeyboardPalette.selected(dark: true)

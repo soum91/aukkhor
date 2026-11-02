@@ -705,9 +705,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let height = max(KeyboardPreferences.typingHeight,
                          settingsPanel ? settingsContentHeight : contentHeight)
         keyboardHeightConstraint?.constant = height
-        (inputView as? KeyboardInputView)?.contentHeight = height
-        view.setNeedsUpdateConstraints()
+        if let root = inputView as? KeyboardInputView {
+            root.contentHeight = height
+            // UIKit caches an input view's presentation height. Updating only
+            // the Auto Layout constant can leave the actual keyboard at its
+            // old size even though systemLayoutSizeFitting reports the new one.
+            // Resize the primary input view, then ask its presentation host to
+            // lay out again while the keyboard is already on screen.
+            if abs(root.bounds.height - height) > 0.5 {
+                var frame = root.frame
+                frame.size.height = height
+                root.frame = frame
+            }
+            root.invalidateIntrinsicContentSize()
+            root.setNeedsUpdateConstraints()
+            root.layoutIfNeeded()
+        }
+        view.superview?.setNeedsUpdateConstraints()
         view.superview?.setNeedsLayout()
+        view.superview?.layoutIfNeeded()
     }
 
     private func colorControl(_ title: String, set: @escaping (String) -> Void) -> UIButton {
