@@ -250,7 +250,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(-301), enabledAt: enabled, now: now))
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(5), enabledAt: enabled, now: now))
     }
-    func testClearPrismRestoresBuild61RefractiveCanvasAndTransientLens() throws {
+    func testClearPrismUsesOneFullKeyboardLensWithoutPerKeyBubbles() throws {
         let savedPreset = KeyboardPreferences.preset
         let savedStyle = KeyboardPreferences.keycapStyle
         let savedSeamless = KeyboardPreferences.seamlessBackground
@@ -272,7 +272,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let effects = all.compactMap { $0 as? UIVisualEffectView }
         XCTAssertEqual(effects.count, 1)
         let lens = try XCTUnwrap(all.compactMap { $0 as? KeyboardPressLensView }.first)
-        XCTAssertTrue(lens.isHidden) // No permanent rainbow border.
+        let panel = try XCTUnwrap(all.compactMap { $0 as? KeyboardPanelLensView }.first)
+        XCTAssertTrue(lens.isHidden)
+        XCTAssertFalse(panel.isHidden, "The glass treatment must span the whole keyboard")
+        XCTAssertFalse(panel.isUserInteractionEnabled, "Glass must never intercept typing")
+        XCTAssertGreaterThanOrEqual(panel.layer.sublayers?.count ?? 0, 4)
+        XCTAssertEqual(panel.backgroundColor?.cgColor.alpha ?? 1, 0)
         XCTAssertFalse(KeyboardPreferences.usesSystemCanvas)
         XCTAssertEqual(KeyboardPreferences.glassTintStrength, 0)
         if #available(iOS 26.0, *) {
@@ -289,10 +294,14 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         })
         let letter = try XCTUnwrap(all.compactMap { $0 as? KeyboardButton }
             .first(where: { $0.title(for: .normal) == "q" }))
+        XCTAssertFalse(letter.usesPressLens)
         letter.isHighlighted = true
-        XCTAssertFalse(lens.isHidden)
+        XCTAssertTrue(lens.isHidden, "No old bubble around an individual key")
         letter.isHighlighted = false
         XCTAssertTrue(lens.isHidden)
+        KeyboardPreferences.preset = .system
+        keyboard.reloadAppearance()
+        XCTAssertTrue(panel.isHidden, "Other themes must retain their original canvas")
     }
     func testBuild61SettingsAndCriticalKeysInsertOnTouchDown() throws {
         let savedPreset = KeyboardPreferences.preset

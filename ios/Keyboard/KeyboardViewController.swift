@@ -91,6 +91,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
+    private let panelLens = KeyboardPanelLensView()
     private let pressLens = KeyboardPressLensView()
     private weak var highlightedLensButton: KeyboardButton?
     // Keep every control in a plain view above the decorative material. An
@@ -155,6 +156,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glassBackdrop.clipsToBounds = true
         glassBackdrop.isUserInteractionEnabled = false
         surface.addSubview(glassBackdrop)
+        panelLens.translatesAutoresizingMaskIntoConstraints = false
+        panelLens.isUserInteractionEnabled = false
+        panelLens.accessibilityIdentifier = "keyboard.panelLens"
+        surface.addSubview(panelLens)
         pressLens.accessibilityIdentifier = "keyboard.pressLens"
         surface.addSubview(pressLens)
         interactionHost.translatesAutoresizingMaskIntoConstraints = false
@@ -168,6 +173,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
             glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
+        ])
+        NSLayoutConstraint.activate([
+            panelLens.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
+            panelLens.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
+            panelLens.topAnchor.constraint(equalTo: surface.topAnchor),
+            panelLens.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             interactionHost.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -339,7 +350,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
         button.insertsOnTouchDown = immediateInput || title == "⌫"
-        button.usesPressLens = KeyboardPreferences.preset == .clearPrism
+        // Clear Prism now belongs to the single keyboard-wide glass shell.
+        // Do not draw a separate bubble around each pressed letter.
+        button.usesPressLens = false
         if button.usesPressLens {
             button.onHighlightChanged = { [weak self] highlighted, key in
                 self?.updatePressLens(for: key, highlighted: highlighted)
@@ -645,6 +658,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         letterButtons.removeAll()
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
+        panelLens.isHidden = KeyboardPreferences.preset != .clearPrism
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
         hasPhotoBackground = backgroundImageView.image != nil

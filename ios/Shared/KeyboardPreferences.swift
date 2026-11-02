@@ -392,6 +392,100 @@ final class KeyboardButton: UIButton {
     }
 }
 
+// One optical surface for the entire Clear Prism keyboard, not a separate
+// effect per key. UIKit's single clear glass canvas provides any backdrop
+// sampling the keyboard host permits; these layers add only inexpensive light
+// grazing the curved edge. No black fill or permanent rainbow stroke.
+final class KeyboardPanelLensView: UIView {
+    private let crown = CAGradientLayer()
+    private let edge = CAGradientLayer()
+    private let edgeMask = CAShapeLayer()
+    private let upperCaustic = CAGradientLayer()
+    private let upperMask = CAShapeLayer()
+    private let lowerCaustic = CAGradientLayer()
+    private let lowerMask = CAShapeLayer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isUserInteractionEnabled = false
+        layer.masksToBounds = false
+
+        crown.type = .radial
+        crown.startPoint = CGPoint(x: 0.5, y: 0.22)
+        crown.endPoint = CGPoint(x: 0.5, y: 1.1)
+        crown.colors = [UIColor.white.withAlphaComponent(0.045).cgColor,
+                        UIColor.white.withAlphaComponent(0.015).cgColor,
+                        UIColor.clear.cgColor]
+        crown.locations = [0, 0.42, 1]
+        layer.addSublayer(crown)
+
+        edge.colors = [UIColor.white.withAlphaComponent(0.48).cgColor,
+                       UIColor.white.withAlphaComponent(0.10).cgColor,
+                       UIColor.white.withAlphaComponent(0.24).cgColor]
+        edge.locations = [0, 0.48, 1]
+        edge.startPoint = CGPoint(x: 0, y: 0)
+        edge.endPoint = CGPoint(x: 1, y: 1)
+        edgeMask.fillColor = UIColor.clear.cgColor
+        edgeMask.strokeColor = UIColor.white.cgColor
+        edgeMask.lineWidth = 1.2
+        edge.mask = edgeMask
+        layer.addSublayer(edge)
+
+        upperCaustic.colors = [UIColor.clear.cgColor,
+                               UIColor.white.withAlphaComponent(0.45).cgColor,
+                               UIColor.white.withAlphaComponent(0.08).cgColor,
+                               UIColor.clear.cgColor]
+        upperCaustic.locations = [0, 0.25, 0.72, 1]
+        upperCaustic.startPoint = CGPoint(x: 0, y: 0)
+        upperCaustic.endPoint = CGPoint(x: 1, y: 0)
+        upperMask.fillColor = UIColor.clear.cgColor
+        upperMask.strokeColor = UIColor.white.cgColor
+        upperMask.lineWidth = 2.0
+        upperCaustic.mask = upperMask
+        layer.addSublayer(upperCaustic)
+
+        lowerCaustic.colors = [UIColor.clear.cgColor,
+                               UIColor.white.withAlphaComponent(0.20).cgColor,
+                               UIColor.systemTeal.withAlphaComponent(0.55).cgColor,
+                               UIColor.systemCyan.withAlphaComponent(0.30).cgColor,
+                               UIColor.clear.cgColor]
+        lowerCaustic.locations = [0, 0.18, 0.47, 0.79, 1]
+        lowerCaustic.startPoint = CGPoint(x: 0, y: 0)
+        lowerCaustic.endPoint = CGPoint(x: 1, y: 0)
+        lowerMask.fillColor = UIColor.clear.cgColor
+        lowerMask.strokeColor = UIColor.white.cgColor
+        lowerMask.lineWidth = 2.6
+        lowerCaustic.mask = lowerMask
+        layer.addSublayer(lowerCaustic)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for gradient in [crown, edge, upperCaustic, lowerCaustic] { gradient.frame = bounds }
+        for mask in [edgeMask, upperMask, lowerMask] { mask.frame = bounds }
+        edgeMask.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1.2, dy: 1.2),
+                                     cornerRadius: 20).cgPath
+        let top = UIBezierPath()
+        top.move(to: CGPoint(x: bounds.width * 0.12, y: 2.5))
+        top.addQuadCurve(to: CGPoint(x: bounds.width * 0.88, y: 2.5),
+                         controlPoint: CGPoint(x: bounds.midX, y: -0.5))
+        upperMask.path = top.cgPath
+        let bottom = UIBezierPath()
+        bottom.move(to: CGPoint(x: bounds.width * 0.12, y: bounds.maxY - 3))
+        bottom.addQuadCurve(to: CGPoint(x: bounds.width * 0.88, y: bounds.maxY - 3),
+                            controlPoint: CGPoint(x: bounds.midX, y: bounds.maxY + 0.5))
+        lowerMask.path = bottom.cgPath
+        CATransaction.commit()
+    }
+}
+
 // One light, transient highlight, shared by all keys. The underlying iOS 26+
 // clear glass material is the real refractive surface. Never add a permanent
 // rainbow border or dozens of live glass views to this keyboard extension.
