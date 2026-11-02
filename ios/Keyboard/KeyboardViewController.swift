@@ -61,6 +61,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var deleteTimer: Timer?
     private var deleteHeld = false
     private var deleteTicks = 0
+    private enum SpaceTouchResult { case ordinary, doubleSpacePeriod }
+    private var spaceTouchResult: SpaceTouchResult?
     private var pendingReplacement: (original: String, inserted: String, document: UUID)?
     private var suppressedReplacement: String?
     #if DEBUG
@@ -72,6 +74,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override var textDocumentProxy: UITextDocumentProxy { testingProxy ?? super.textDocumentProxy }
     func testingType(_ text: String) { type(text) }
     func testingTypeCharacter(_ character: String) { typeCharacter(character) }
+    func testingTouchDownSpace() { typeSpaceFromTouchDown() }
+    func testingBeginSpaceCaret() { undoSpaceForCaretMovement() }
     func testingDelete() { backspace() }
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
@@ -243,6 +247,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         stopDelete()
+        spaceTouchResult = nil
         if !isPreview { ScreenshotClipboard.shared.stop() }
     }
 
@@ -313,6 +318,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             foreground: UIColor = .label, weight: CGFloat = 1, surface: Bool = true,
                             immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
+        button.insertsOnTouchDown = immediateInput || title == "⌫"
         button.usesPressLens = KeyboardPreferences.preset == .clearPrism
         if button.usesPressLens {
             button.onHighlightChanged = { [weak self] highlighted, key in
@@ -359,6 +365,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }, for: .touchUpInside)
             button.addAction(UIAction { [weak button] _ in button?.immediateActionTriggered = false },
                              for: [.touchUpOutside, .touchCancel])
+            if title == "Space" {
+                button.addAction(UIAction { [weak self] _ in self?.spaceTouchResult = nil },
+                                 for: [.touchUpInside, .touchUpOutside])
+            }
         } else {
             button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
         }
@@ -630,7 +640,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self?.clipboardPanel = false; self?.settingsPanel = false; self?.buildKeys()
             }),
             ("😊", { [weak self] in self?.toggleEmoji() }),
-            ("Space", { [weak self] in self?.type(" ") }),
+            ("Space", { [weak self] in self?.typeSpaceFromTouchDown() }),
             ("return", { [weak self] in self?.type("\n") })
         ]
         if needsEditingKeys {
@@ -646,7 +656,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         bottom.spacing = KeyboardPreferences.keySpacing
         bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         for (label, action) in bottomControls {
-            let button = makeButton(label, action: action)
+            let button = makeButton(label, action: action,
+                                    immediateInput: label == "Space" || label == "return")
             bottom.addArrangedSubview(button)
             if label == "Space" {
                 button.setTitle(mode == .english ? "space" : mode.label, for: .normal)
@@ -701,7 +712,31 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildAppearancePanel() {
-        stack.addArrangedSubview(row([
+        // Keep the configuration page inside the keyboard's normal footprint.
+        // Growing the entire input view created a large, dark iOS-owned footer
+        // below our custom panel and made relayout expensive.
+        let scroll = UIScrollView()
+        scroll.accessibilityIdentifier = "keyboard.settingsScroll"
+        scroll.alwaysBounceVertical = true
+        scroll.showsVerticalScrollIndicator = true
+        let options = UIStackView()
+        options.axis = .vertical
+        options.spacing = KeyboardPreferences.rowGap
+        options.translatesAutoresizingMaskIntoConstraints = false
+        scroll.addSubview(options)
+        NSLayoutConstraint.activate([
+            options.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            options.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            options.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            options.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            options.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+        ])
+        let viewport = max(KeyboardPreferences.rowHeight * 2,
+                           KeyboardPreferences.typingHeight - 24 - KeyboardPreferences.rowHeight
+                           - 2 * KeyboardPreferences.rowGap)
+        scroll.heightAnchor.constraint(equalToConstant: viewport).isActive = true
+        stack.addArrangedSubview(scroll)
+        options.addArrangedSubview(row([
             (KeyboardPreferences.autocorrect ? "Autocorrect: On" : "Autocorrect: Off", { [weak self] in
                 KeyboardPreferences.autocorrect.toggle(); self?.buildKeys()
             }),
@@ -709,16 +744,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardPreferences.textReplacement.toggle(); self?.buildKeys()
             })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             (AukkhorSettings.keyboardClipboardEnabled ? "Windows tools: On" : "Windows tools: Off", { [weak self] in
                 AukkhorSettings.keyboardClipboardEnabled.toggle(); self?.buildKeys()
             })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             ("Theme: " + KeyboardPreferences.preset.title, { [weak self] in self?.cycleTheme() }),
             ("Done", { [weak self] in self?.settingsPanel = false; self?.buildKeys() })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             (["Keycaps: Normal", "Keycaps: Borderless", "Keycaps: None"][KeyboardPreferences.keycapStyle], { [weak self] in
                 KeyboardPreferences.keycapStyle = (KeyboardPreferences.keycapStyle + 1) % 3
                 self?.buildKeys()
@@ -727,27 +762,31 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardPreferences.numberRow.toggle(); self?.buildKeys()
             })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
             ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
             (KeyboardPreferences.glassEnabled ? "Glass: On" : "Glass: Off", { [weak self] in
                 KeyboardPreferences.setGlassEnabled(!KeyboardPreferences.glassEnabled); self?.buildKeys()
             })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             ("Opacity −", { [weak self] in KeyboardPreferences.keyOpacity -= 0.1; self?.buildKeys() }),
             ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
         ]))
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             (KeyboardPreferences.usesSystemCanvas ? "Background: iOS" : "Background: Custom", { [weak self] in
-                let system = !KeyboardPreferences.usesSystemCanvas
-                KeyboardPreferences.seamlessBackground = system
-                if system { KeyboardPreferences.setGlassEnabled(true) }
+                guard KeyboardPreferences.preset != .clearPrism else {
+                    self?.show("Clear Prism always blends with the iOS keyboard background")
+                    return
+                }
+                let seamless = !KeyboardPreferences.usesSystemCanvas
+                KeyboardPreferences.seamlessBackground = seamless
+                if seamless { KeyboardPreferences.setGlassEnabled(true) }
                 self?.buildKeys()
             })
         ]))
         if !KeyboardPreferences.seamlessBackground {
-        stack.addArrangedSubview(row([
+        options.addArrangedSubview(row([
             (KeyboardPreferences.clearGlass ? "Clear glass" : "Frosted glass", { [weak self] in
                 KeyboardPreferences.clearGlass.toggle(); self?.buildKeys()
             }),
@@ -764,7 +803,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         colors.distribution = .fillEqually
         colors.spacing = 4
         colors.heightAnchor.constraint(equalToConstant: 36).isActive = true
-        stack.addArrangedSubview(colors)
+        options.addArrangedSubview(colors)
 
     }
 
@@ -1040,12 +1079,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                                     bangla: self.mode == .bangla)
         }
         contextRefreshWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
         switch recognizer.state {
         case .began:
+            undoSpaceForCaretMovement()
             commitBuffer()
             dragCaretOffset = 0
             dragStartX = recognizer.location(in: recognizer.view).x
@@ -1070,6 +1110,30 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         symbols = false; shift = false; capsLock = false
         emojiMode = false; clipboardPanel = false
         buildKeys()
+    }
+
+    private func typeSpaceFromTouchDown() {
+        let searchingEmoji = emojiMode && emojiSearch
+        type(" ")
+        if !searchingEmoji {
+            spaceTouchResult = lastSpaceTap == .distantPast ? .doubleSpacePeriod : .ordinary
+        }
+    }
+
+    private func undoSpaceForCaretMovement() {
+        guard let inserted = spaceTouchResult else { return }
+        spaceTouchResult = nil
+        switch inserted {
+        case .ordinary:
+            // A long press should move the caret, not leave an extra Space
+            // or a newly expanded text replacement behind.
+            backspace(refresh: false)
+        case .doubleSpacePeriod:
+            textDocumentProxy.deleteBackward()
+            textDocumentProxy.deleteBackward()
+            textDocumentProxy.insertText(" ")
+        }
+        lastSpaceTap = .distantPast
     }
 
     private func type(_ value: String) {

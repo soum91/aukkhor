@@ -79,11 +79,14 @@ enum KeyboardPreferences {
     }
     static var glassEnabled: Bool { preset == .liquidGlass || preset == .clearPrism || usesGlass }
     static var seamlessBackground: Bool {
-        get { data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true }
-        set { data.set(newValue, forKey: "keyboardSeamlessBackground") }
+        // A keyboard extension cannot paint the iOS-owned globe/footer strip.
+        // Clear Prism must use the same system plate as that strip, even when
+        // an older build saved the separate/custom background setting.
+        get { preset == .clearPrism || (data.object(forKey: "keyboardSeamlessBackground") as? Bool ?? true) }
+        set { data.set(preset == .clearPrism ? true : newValue, forKey: "keyboardSeamlessBackground") }
     }
     static var usesSystemCanvas: Bool {
-        preset != .clearPrism && seamlessBackground && (preset == .system || glassEnabled)
+        seamlessBackground && (preset == .system || glassEnabled)
     }
     static func setGlassEnabled(_ enabled: Bool) {
         usesGlass = enabled
@@ -278,11 +281,14 @@ struct KeyboardPalette {
         // it so UIKit's private glass/backdrop views can never swallow taps.
         effectView.isUserInteractionEnabled = false
         // UIKit already paints the keyboard plate, including the globe area.
-        // A second, rounded material confined to the extension creates a seam.
+        // A second, rounded material confined to the extension creates a seam
+        // and an expensive extra backdrop capture on every keyboard update.
         let systemCanvas = KeyboardPreferences.usesSystemCanvas
         surface.layer.cornerRadius = systemCanvas ? 0 : 20
         effectView.layer.cornerRadius = systemCanvas ? 0 : 20
         if systemCanvas {
+            // One clear host-owned material across the typing area and iOS
+            // globe strip. No opaque second layer and no live UIGlassEffect.
             effectView.effect = nil
             effectView.overrideUserInterfaceStyle = .unspecified
             surface.backgroundColor = .clear
@@ -351,12 +357,13 @@ final class KeyboardButton: UIButton {
     // Touch-down insertion is quicker than waiting for a lift. Keep a guard
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
+    var insertsOnTouchDown = false
     var usesPressLens = false
     var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.insetBy(dx: -6, dy: -6).contains(point)
+        bounds.insetBy(dx: -8, dy: -9).contains(point)
     }
     override var isHighlighted: Bool {
         didSet {
@@ -451,7 +458,7 @@ final class KeyboardInteractionView: UIView {
                     let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
                     let distance = dx * dx + dy * dy
-                    if dx <= 6 && dy <= 6 && distance < nearestDistance {
+                    if dx <= 10 && dy <= 10 && distance < nearestDistance {
                         nearest = key
                         nearestDistance = distance
                     }

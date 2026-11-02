@@ -149,7 +149,7 @@ private final class KeyboardSystemTestController: UIViewController {
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
                     if keyboardPreset == .clearPrism {
-                        Text("Clear glass uses iOS's refractive material with nearly invisible keycaps. A small lens highlight appears only while pressing a key, without a permanent rainbow frame or per-key glass effects.")
+                        Text("Clear Prism shares the native iOS keyboard background, including the globe strip, to avoid a dark seam and extra glass processing. Nearly invisible keys and a small press lens replace the permanent rainbow frame. iOS controls how transparent the host keyboard plate can be.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     KeyboardThemePreview(revision: previewRevision)
@@ -488,6 +488,7 @@ private final class KeyboardSystemTestController: UIViewController {
             Toggle("Blend background with iOS", isOn: Binding(
                 get: { KeyboardPreferences.seamlessBackground },
                 set: { KeyboardPreferences.seamlessBackground = $0; previewRevision = UUID() }))
+                .disabled(KeyboardPreferences.preset == .clearPrism)
             if !KeyboardPreferences.seamlessBackground {
             Picker("Glass appearance", selection: Binding(
                 get: { KeyboardPreferences.clearGlass },
