@@ -277,8 +277,8 @@ struct KeyboardPalette {
         // This view is decoration only. Controls live in a plain sibling above
         // it so UIKit's private glass/backdrop views can never swallow taps.
         effectView.isUserInteractionEnabled = false
-        // The host plate is used only when the user explicitly selects it.
-        // Clear Prism retains the separate rounded material used in build 61.
+        // UIKit already paints the keyboard plate, including the globe area.
+        // A second, rounded material confined to the extension creates a seam.
         let systemCanvas = KeyboardPreferences.usesSystemCanvas
         surface.layer.cornerRadius = systemCanvas ? 0 : 20
         effectView.layer.cornerRadius = systemCanvas ? 0 : 20
@@ -351,13 +351,12 @@ final class KeyboardButton: UIButton {
     // Touch-down insertion is quicker than waiting for a lift. Keep a guard
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
-    var insertsOnTouchDown = false
     var usesPressLens = false
     var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.insetBy(dx: -8, dy: -9).contains(point)
+        bounds.insetBy(dx: -6, dy: -6).contains(point)
     }
     override var isHighlighted: Bool {
         didSet {
@@ -452,7 +451,7 @@ final class KeyboardInteractionView: UIView {
                     let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
                     let distance = dx * dx + dy * dy
-                    if dx <= 10 && dy <= 10 && distance < nearestDistance {
+                    if dx <= 6 && dy <= 6 && distance < nearestDistance {
                         nearest = key
                         nearestDistance = distance
                     }
@@ -469,12 +468,7 @@ final class KeyboardInteractionView: UIView {
 final class KeyboardInputView: UIInputView {
     var contentHeight: CGFloat = KeyboardPreferences.typingHeight {
         didSet {
-            if abs(oldValue - contentHeight) > 0.5 {
-                invalidateIntrinsicContentSize()
-                setNeedsUpdateConstraints()
-                setNeedsLayout()
-                superview?.setNeedsLayout()
-            }
+            if abs(oldValue - contentHeight) > 0.5 { invalidateIntrinsicContentSize() }
         }
     }
     override var intrinsicContentSize: CGSize {

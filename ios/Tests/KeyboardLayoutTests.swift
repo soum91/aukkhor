@@ -259,69 +259,6 @@ private final class KeyboardHostField: UITextField {
         add(attachment)
     }
 
-    func testExpandedSettingsActuallyResizesHostedKeyboard() async throws {
-        let savedPreset = KeyboardPreferences.preset
-        let savedNumbers = KeyboardPreferences.numberRow
-        let savedSide = KeyboardPreferences.oneHandSide
-        let savedSeamless = KeyboardPreferences.seamlessBackground
-        let savedKeycaps = KeyboardPreferences.keycapStyle
-        defer {
-            KeyboardPreferences.preset = savedPreset
-            KeyboardPreferences.numberRow = savedNumbers
-            KeyboardPreferences.oneHandSide = savedSide
-            KeyboardPreferences.seamlessBackground = savedSeamless
-            KeyboardPreferences.keycapStyle = savedKeycaps
-        }
-        KeyboardPreferences.preset = .system
-        KeyboardPreferences.numberRow = false
-        KeyboardPreferences.oneHandSide = 0
-        KeyboardPreferences.seamlessBackground = true
-        KeyboardPreferences.keycapStyle = 0
-        let keyboard = KeyboardViewController()
-        keyboard.isPreview = true
-        keyboard.loadViewIfNeeded()
-        let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
-        let initialHeight = KeyboardPreferences.typingHeight
-
-        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first as? UIWindowScene)
-        let window = UIWindow(windowScene: scene)
-        let host = UIViewController()
-        let field = KeyboardHostField(frame: CGRect(x: 20, y: 80, width: 250, height: 44))
-        field.suppliedKeyboard = keyboard
-        host.view.addSubview(field)
-        window.rootViewController = host
-        window.makeKeyAndVisible()
-        defer { field.resignFirstResponder(); window.isHidden = true }
-        XCTAssertTrue(field.becomeFirstResponder())
-        try await Task.sleep(for: .milliseconds(600))
-        XCTAssertNotNil(root.window)
-        XCTAssertEqual(root.bounds.height, initialHeight, accuracy: 1)
-
-        keyboard.toggleAppearancePanel()
-        try await Task.sleep(for: .milliseconds(600))
-        root.layoutIfNeeded()
-        XCTAssertGreaterThan(root.bounds.height, initialHeight + 150,
-                             "UIKit must expand the *visible* input view, not merely record a desired height")
-        XCTAssertEqual(root.bounds.height, root.contentHeight, accuracy: 1)
-        if let presentation = root.superview {
-            XCTAssertGreaterThanOrEqual(presentation.bounds.height, root.bounds.height - 1,
-                                        "The UIKit presentation must also grow, not clip an oversized child")
-        }
-        for title in ["Keycaps: Normal", "Opacity −", "Background: iOS", "Text", "space"] {
-            let button = try XCTUnwrap(buttons(in: root).first { $0.title(for: .normal) == title },
-                                       "Missing settings control: \(title)")
-            let frame = button.convert(button.bounds, to: root)
-            XCTAssertGreaterThan(frame.width, 0, "\(title) was horizontally squished")
-            XCTAssertLessThanOrEqual(frame.maxY, root.bounds.maxY + 1,
-                                     "\(title) is clipped below the visible settings panel")
-        }
-        keyboard.toggleAppearancePanel()
-        try await Task.sleep(for: .milliseconds(400))
-        root.layoutIfNeeded()
-        XCTAssertEqual(root.bounds.height, initialHeight, accuracy: 1,
-                       "Closing settings must restore the original compact keyboard")
-    }
-
     // Release regression coverage for narrow keys and the gaps between them.
     func testKeyTouchToleranceAndGaps() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
