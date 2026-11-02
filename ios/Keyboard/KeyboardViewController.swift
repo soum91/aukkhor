@@ -201,10 +201,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             banner.heightAnchor.constraint(equalToConstant: 24)
         ])
         let preferredHeight = view.heightAnchor.constraint(equalToConstant: KeyboardPreferences.typingHeight)
-        // A weaker priority lets UIKit's original compact keyboard height win
-        // after settings expands. The primary view must own its requested
-        // height so the entire settings grid is visible without scrolling.
-        preferredHeight.priority = .required
+        preferredHeight.priority = UILayoutPriority(999)
         preferredHeight.isActive = true
         keyboardHeightConstraint = preferredHeight
         glideRecognizer.isEnabled = typingOptions.glide
