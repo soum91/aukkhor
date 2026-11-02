@@ -1,3 +1,6 @@
+# Owner-authorized one-off release: build 72 compiled and passed behavior/layout
+# tests but the unsigned simulator's installed-keyboard UI test failed.
+# The release commit carries [publish-unverified] to skip only that run's gates.
 name: Aukkhor iOS unsigned build
 on:
   workflow_dispatch:
