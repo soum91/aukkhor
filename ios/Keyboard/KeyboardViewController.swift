@@ -284,7 +284,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func feedback() {
         if typingOptions.haptics {
             impact.impactOccurred(intensity: 0.8)
-            impact.prepare()
         }
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
@@ -339,6 +338,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             immediateInput: Bool = false) -> UIButton {
         let button = KeyboardButton(type: .custom)
         button.insertsOnTouchDown = immediateInput || title == "⌫"
+        button.touchExpansion = KeyboardPreferences.touchExpansion
         // Clear Prism now belongs to the single keyboard-wide glass shell.
         // Do not draw a separate bubble around each pressed letter.
         button.usesPressLens = false
@@ -361,16 +361,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if surface { KeyboardKeyAppearance.apply(to: button, palette: palette) }
         button.accessibilityLabel = title
         if title == "⌫" {
-            // Call before UIKit's control bookkeeping. Some host text fields
-            // swallow the synthesized .touchDown control event under load.
             let beginDelete = { [weak self, weak button] in
                 guard let self, self.acceptsTouchInput, let button,
                       !button.immediateActionTriggered else { return }
                 button.immediateActionTriggered = true
-                self.feedback()
                 self.startDelete()
+                self.feedback()
             }
-            button.touchBeginAction = beginDelete
             button.addAction(UIAction { [weak self] _ in
                 guard self?.acceptsTouchInput == true else { return }
                 beginDelete()
@@ -392,17 +389,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 guard let self, self.acceptsTouchInput, let button,
                       !button.immediateActionTriggered else { return }
                 button.immediateActionTriggered = true
-                self.feedback()
                 action()
+                self.feedback()
             }
-            button.touchBeginAction = beginInput
             button.addAction(UIAction { [weak self, weak button] _ in
                 guard self?.acceptsTouchInput == true else { return }
                 beginInput()
             }, for: .touchDown)
             button.addAction(UIAction { [weak self, weak button] _ in
                 guard let self, self.acceptsTouchInput else { return }
-                if button?.immediateActionTriggered != true { self.feedback(); action() }
+                if button?.immediateActionTriggered != true { action(); self.feedback() }
                 button?.immediateActionTriggered = false
             }, for: .touchUpInside)
             button.addAction(UIAction { [weak button] _ in button?.immediateActionTriggered = false },
@@ -642,6 +638,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
+        interactionHost.touchExpansion = KeyboardPreferences.touchExpansion
         suggestionRequestKey = nil
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
@@ -789,8 +786,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stack.addArrangedSubview(row([
             ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
             ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
-            (KeyboardPreferences.glassEnabled ? "Glass: On" : "Glass: Off", { [weak self] in
-                KeyboardPreferences.setGlassEnabled(!KeyboardPreferences.glassEnabled); self?.buildKeys()
+            ("Touch: \(Int(KeyboardPreferences.touchExpansion))", { [weak self] in
+                KeyboardPreferences.increaseTouchExpansion(); self?.buildKeys()
             })
         ]))
         stack.addArrangedSubview(row([

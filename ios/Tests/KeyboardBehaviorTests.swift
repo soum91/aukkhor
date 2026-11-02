@@ -29,7 +29,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     private var saved: [String: Any] = [:]
     private let keys = ["keyboardAutocorrect", "keyboardTextReplacement", "keyboardSuggestions",
                         "keyboardDoubleSpace", "keyboardPreset", "keyboardKeycapStyle",
-                        "keyboardSeamlessBackground", "keyboardNumberRow"]
+                        "keyboardSeamlessBackground", "keyboardNumberRow", "keyboardTouchExpansion"]
     override func setUp() {
         super.setUp()
         for key in keys { saved[key] = AukkhorSettings.defaults.object(forKey: key) }
@@ -147,7 +147,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         for character in input { keyboard.testingTypeCharacter(String(character)) }
         XCTAssertEqual(proxy.text, input)
     }
-    func testRealTouchDownActionsNeverMissOrDoubleInsert() throws {
+    func testControlTouchDownActionsNeverMissOrDoubleInsert() throws {
         KeyboardPreferences.autocorrect = false
         KeyboardPreferences.suggestions = false
         let (keyboard, proxy) = keyboard()
@@ -158,15 +158,39 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let q = try XCTUnwrap(buttons(keyboard.view).first { $0.accessibilityLabel == "q" })
         XCTAssertTrue(q.insertsOnTouchDown)
         for count in 1...80 {
-            // UIButton.touchesBegan invokes this before UIKit sends .touchDown.
-            // Both paths must safely deliver exactly one character.
-            q.touchBeginAction?()
+            // Use UIKit's .touchDown route, as in the pre-Prism keyboard.
+            // Touch-up is a fallback only, never a duplicate insertion.
             q.sendActions(for: .touchDown)
             XCTAssertEqual(proxy.text.count, count, "Touch down #\(count) must insert immediately")
             q.sendActions(for: .touchUpInside)
             XCTAssertEqual(proxy.text.count, count, "Touch up must not double insert")
         }
         XCTAssertEqual(proxy.text, String(repeating: "q", count: 80))
+        q.sendActions(for: .touchUpInside)
+        XCTAssertEqual(proxy.text.count, 81, "Touch-up must recover a tap whose down event was missed")
+    }
+    func testSensitivityKeepsRoutedGapTouchesInsideButtonAcceptance() {
+        let saved = KeyboardPreferences.touchExpansion
+        defer { KeyboardPreferences.touchExpansion = saved }
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        let button = KeyboardButton(type: .custom)
+        button.frame = CGRect(x: 40, y: 20, width: 40, height: 40)
+        host.addSubview(button)
+        for padding: CGFloat in [0, 6, 10, 14, 16] {
+            KeyboardPreferences.touchExpansion = padding
+            button.touchExpansion = KeyboardPreferences.touchExpansion
+            host.touchExpansion = KeyboardPreferences.touchExpansion
+            let point = CGPoint(x: 80 + padding - 0.5, y: 40)
+            let selected = host.hitTest(point, with: nil)
+            XCTAssertTrue(selected === button, "Padding \(padding) should route this tap to the key")
+            XCTAssertTrue(button.point(inside: button.convert(point, from: host), with: nil),
+                          "The routed key must actually accept the point")
+            XCTAssertFalse(host.hitTest(CGPoint(x: 80 + padding + 0.5, y: 40), with: nil) === button,
+                           "A hit beyond the configured tolerance must not be misrouted")
+        }
+        KeyboardPreferences.touchExpansion = 10
+        KeyboardPreferences.increaseTouchExpansion()
+        XCTAssertEqual(KeyboardPreferences.touchExpansion, 14)
     }
     func testSelectedTextCaseAndMarkdownFormattingNeverResizeKeyboard() throws {
         let (keyboard, proxy) = keyboard()
@@ -319,6 +343,9 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         func views(_ parent: UIView) -> [UIView] { [parent] + parent.subviews.flatMap(views) }
         let all = views(keyboard.view)
         XCTAssertNil(all.first { $0.accessibilityIdentifier == "keyboard.settingsScroll" })
+        XCTAssertNotNil(all.compactMap { $0 as? UIButton }
+            .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
+            "Keep sensitivity accessible in the existing expanded gear panel")
         keyboard.toggleAppearancePanel()
         for label in ["q", "a", "z", "Space", "return"] {
             let key = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? KeyboardButton }

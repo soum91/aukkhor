@@ -78,6 +78,17 @@ enum KeyboardPreferences {
         get { CGFloat(data.object(forKey: "keyboardKeySpacing") as? Double ?? 6) }
         set { data.set(Double(max(2, min(10, newValue))), forKey: "keyboardKeySpacing") }
     }
+    // A hit-area setting, not touch pressure. Cache it on views when the keys
+    // are built so the touch path never reads UserDefaults for each finger.
+    static var touchExpansion: CGFloat {
+        get { CGFloat(max(0, min(16, data.object(forKey: "keyboardTouchExpansion") as? Double ?? 10))) }
+        set { data.set(Double(max(0, min(16, newValue))), forKey: "keyboardTouchExpansion") }
+    }
+    static let touchExpansionSteps: [CGFloat] = [0, 6, 10, 14, 16]
+    static func increaseTouchExpansion() {
+        let current = touchExpansion
+        touchExpansion = touchExpansionSteps.first(where: { $0 > current }) ?? touchExpansionSteps[0]
+    }
     static var keyHeight: CGFloat {
         get { CGFloat(data.object(forKey: "keyboardKeyHeight") as? Double ?? 43) }
         set { data.set(Double(max(36, min(56, newValue))), forKey: "keyboardKeyHeight") }
@@ -371,19 +382,13 @@ final class KeyboardButton: UIButton {
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
     var insertsOnTouchDown = false
-    var touchBeginAction: (() -> Void)?
+    var touchExpansion: CGFloat = 10
     var usesPressLens = false
     var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-        bounds.insetBy(dx: -8, dy: -9).contains(point)
-    }
-    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        // Insert on the raw touch path, before UIButton highlight animations
-        // and .touchDown dispatch. The action itself guards duplicate delivery.
-        if insertsOnTouchDown { touchBeginAction?() }
-        super.touchesBegan(touches, with: event)
+        bounds.insetBy(dx: -touchExpansion, dy: -touchExpansion).contains(point)
     }
     override var isHighlighted: Bool {
         didSet {
@@ -496,6 +501,7 @@ final class KeyboardPressLensView: UIView {
 // Fill only the small gaps between keys, without growing or moving their caps.
 // Prefer the closest enabled key; never route outside the keyboard's bounds.
 final class KeyboardInteractionView: UIView {
+    var touchExpansion: CGFloat = 10
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard isUserInteractionEnabled, !isHidden, alpha > 0.01,
               bounds.contains(point) else { return nil }
@@ -515,7 +521,9 @@ final class KeyboardInteractionView: UIView {
                     let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
                     let distance = dx * dx + dy * dy
-                    if dx <= 10 && dy <= 10 && distance < nearestDistance {
+                    // Use exactly the same acceptance bounds as the key.
+                    // Previously this routed touches that the key rejected.
+                    if dx <= self.touchExpansion && dy <= self.touchExpansion && distance < nearestDistance {
                         nearest = key
                         nearestDistance = distance
                     }

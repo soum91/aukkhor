@@ -107,6 +107,7 @@ private final class KeyboardSystemTestController: UIViewController {
     @State private var textColor = Color(UIColor(keyboardHex: KeyboardPreferences.customForeground))
     @State private var keyOpacity = Double(KeyboardPreferences.keyOpacity)
     @State private var keySpacing = Double(KeyboardPreferences.keySpacing)
+    @State private var touchExpansion = Double(KeyboardPreferences.touchExpansion)
     @State private var heightScale = Double(KeyboardPreferences.heightScale)
     @State private var keyHeight = Double(KeyboardPreferences.keyHeight)
     @State private var oneHand = KeyboardPreferences.oneHandSide
@@ -252,6 +253,16 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: haptics) { KeyboardPreferences.haptics = $0 }
                     Toggle("Key sounds", isOn: $keySounds)
                         .onChange(of: keySounds) { KeyboardPreferences.keySounds = $0 }
+                    VStack(alignment: .leading) {
+                        Text("Key touch sensitivity: \(Int(touchExpansion)) pt")
+                        Slider(value: $touchExpansion, in: 0...16, step: 2)
+                            .onChange(of: touchExpansion) {
+                                KeyboardPreferences.touchExpansion = CGFloat($0)
+                                previewRevision = UUID()
+                            }
+                        Text("Larger values accept taps nearer the edge of each key. This changes the hit area, not touch pressure. You can also cycle it from the keyboard gear panel using Touch.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle("Dedicated number row", isOn: $numberRow)
                         .onChange(of: numberRow) { KeyboardPreferences.numberRow = $0 }
                     Toggle("Word suggestions", isOn: $suggestions)
