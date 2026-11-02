@@ -29,7 +29,8 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     private var saved: [String: Any] = [:]
     private let keys = ["keyboardAutocorrect", "keyboardTextReplacement", "keyboardSuggestions",
                         "keyboardDoubleSpace", "keyboardPreset", "keyboardKeycapStyle",
-                        "keyboardSeamlessBackground", "keyboardNumberRow", "keyboardTouchExpansion"]
+                        "keyboardSeamlessBackground", "keyboardNumberRow", "keyboardTouchExpansion",
+                        "keyboardDirectTouchRouting"]
     override func setUp() {
         super.setUp()
         for key in keys { saved[key] = AukkhorSettings.defaults.object(forKey: key) }
@@ -192,6 +193,49 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         KeyboardPreferences.increaseTouchExpansion()
         XCTAssertEqual(KeyboardPreferences.touchExpansion, 14)
     }
+    func testDirectTouchRoutingInsertsOnContactOnceAndSupportsSensitivity() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
+        host.directTouchRoutingEnabled = true
+        host.touchExpansion = 12
+        let button = KeyboardButton(type: .custom)
+        button.insertsOnTouchDown = true
+        button.touchExpansion = 12
+        button.accessibilityLabel = "q"
+        button.frame = CGRect(x: 30, y: 20, width: 45, height: 45)
+        host.addSubview(button)
+        var inserted = 0
+        var released = 0
+        button.addAction(UIAction { _ in inserted += 1 }, for: .touchDown)
+        button.addAction(UIAction { _ in released += 1 }, for: .touchUpInside)
+        let nearEdge = CGPoint(x: 86, y: 42)
+        XCTAssertTrue(host.hitTest(nearEdge, with: nil) === host,
+                      "The direct route must intercept key hit testing in the extension")
+        for count in 1...100 {
+            let pressed = host.beginDirectKey(at: nearEdge)
+            XCTAssertTrue(pressed === button)
+            XCTAssertEqual(inserted, count, "Each touch should insert on finger down")
+            if let pressed { host.endDirectKey(pressed, at: nearEdge) }
+            XCTAssertEqual(released, count, "Each touch must release exactly once")
+        }
+        XCTAssertEqual(host.receivedTouchCount, 100)
+        XCTAssertEqual(host.routedTouchCount, 100)
+        host.directTouchRoutingEnabled = false
+        XCTAssertTrue(host.hitTest(nearEdge, with: nil) === button,
+                      "The user must be able to restore the previous UIControl route")
+        XCTAssertNil(host.beginDirectKey(at: nearEdge))
+    }
+    func testDirectTouchRoutingKeepsSpaceNativeForCaretLongPress() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 250, height: 100))
+        host.directTouchRoutingEnabled = true
+        let space = KeyboardButton(type: .custom)
+        space.frame = CGRect(x: 25, y: 20, width: 200, height: 50)
+        space.accessibilityLabel = "Space"
+        space.insertsOnTouchDown = true
+        host.addSubview(space)
+        let point = CGPoint(x: 100, y: 45)
+        XCTAssertTrue(host.hitTest(point, with: nil) === space)
+        XCTAssertNil(host.beginDirectKey(at: point), "The caret long press must stay on Space")
+    }
     func testSelectedTextCaseAndMarkdownFormattingNeverResizeKeyboard() throws {
         let (keyboard, proxy) = keyboard()
         let initialHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
@@ -346,6 +390,9 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
             .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
             "Keep sensitivity accessible in the existing expanded gear panel")
+        XCTAssertNotNil(all.compactMap { $0 as? UIButton }
+            .first { $0.accessibilityLabel == "Open Aukkhor app" },
+            "Keep the left-rail gear as the containing-app shortcut")
         keyboard.toggleAppearancePanel()
         for label in ["q", "a", "z", "Space", "return"] {
             let key = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? KeyboardButton }

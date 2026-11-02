@@ -89,6 +89,13 @@ enum KeyboardPreferences {
         let current = touchExpansion
         touchExpansion = touchExpansionSteps.first(where: { $0 > current }) ?? touchExpansionSteps[0]
     }
+    // The remote keyboard can bypass UIButton's delayed tracking for character
+    // keys. Keep a switch so a user can revert to the old touch path instantly
+    // if their iOS build handles UIControl events more reliably.
+    static var directTouchRouting: Bool {
+        get { data.object(forKey: "keyboardDirectTouchRouting") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardDirectTouchRouting") }
+    }
     static var keyHeight: CGFloat {
         get { CGFloat(data.object(forKey: "keyboardKeyHeight") as? Double ?? 43) }
         set { data.set(Double(max(36, min(56, newValue))), forKey: "keyboardKeyHeight") }
@@ -502,7 +509,25 @@ final class KeyboardPressLensView: UIView {
 // Prefer the closest enabled key; never route outside the keyboard's bounds.
 final class KeyboardInteractionView: UIView {
     var touchExpansion: CGFloat = 10
+    var directTouchRoutingEnabled = false
+    private var trackedKeys: [ObjectIdentifier: KeyboardButton] = [:]
+    private(set) var receivedTouchCount = 0
+    private(set) var routedTouchCount = 0
+
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let target = resolvedHit(at: point, with: event)
+        // Receive the finger on this lightweight view, and send the key's
+        // touchDown synchronously. Avoid UIKit's UIControl tracking latency
+        // inside remote extension hosts. Leave Space with UIKit so its cursor
+        // long-press gesture still works, and preserve the menus/tools.
+        if directTouchRoutingEnabled, let key = target as? KeyboardButton,
+           key.insertsOnTouchDown, key.accessibilityLabel != "Space" {
+            return self
+        }
+        return target
+    }
+
+    private func resolvedHit(at point: CGPoint, with event: UIEvent?) -> UIView? {
         guard isUserInteractionEnabled, !isHidden, alpha > 0.01,
               bounds.contains(point) else { return nil }
         // UIKit already finds direct key hits. Only search nearby keys when
@@ -532,6 +557,68 @@ final class KeyboardInteractionView: UIView {
         }
         visit(self)
         return nearest ?? direct
+    }
+
+    @discardableResult
+    func beginDirectKey(at point: CGPoint, event: UIEvent? = nil) -> KeyboardButton? {
+        receivedTouchCount += 1
+        guard directTouchRoutingEnabled,
+              let key = resolvedHit(at: point, with: event) as? KeyboardButton,
+              key.insertsOnTouchDown, key.accessibilityLabel != "Space" else { return nil }
+        // UIKit sends the paired touch-up only to the original key, even if
+        // the user's finger drifts into an adjacent hit expansion area.
+        key.isHighlighted = true
+        key.sendActions(for: .touchDown)
+        routedTouchCount += 1
+        return key
+    }
+
+    func endDirectKey(_ key: KeyboardButton, at point: CGPoint, cancelled: Bool = false) {
+        key.isHighlighted = false
+        let within = key.point(inside: key.convert(point, from: self), with: nil)
+        key.sendActions(for: cancelled ? .touchCancel : (within ? .touchUpInside : .touchUpOutside))
+    }
+
+    func cancelActiveTouches() {
+        for key in trackedKeys.values {
+            key.isHighlighted = false
+            key.sendActions(for: .touchCancel)
+        }
+        trackedKeys.removeAll()
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            if let key = beginDirectKey(at: touch.location(in: self), event: event) {
+                trackedKeys[ObjectIdentifier(touch)] = key
+            }
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let id = ObjectIdentifier(touch)
+            guard let key = trackedKeys[id] else { continue }
+            let position = touch.location(in: self)
+            if !key.point(inside: key.convert(position, from: self), with: event) {
+                endDirectKey(key, at: position, cancelled: true)
+                trackedKeys.removeValue(forKey: id)
+            }
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            guard let key = trackedKeys.removeValue(forKey: ObjectIdentifier(touch)) else { continue }
+            endDirectKey(key, at: touch.location(in: self))
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            guard let key = trackedKeys.removeValue(forKey: ObjectIdentifier(touch)) else { continue }
+            endDirectKey(key, at: touch.location(in: self), cancelled: true)
+        }
     }
 }
 

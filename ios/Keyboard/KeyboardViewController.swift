@@ -255,6 +255,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        interactionHost.cancelActiveTouches()
         stopDelete()
         spaceTouchResult = nil
         if !isPreview { ScreenshotClipboard.shared.stop() }
@@ -550,7 +551,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            ("⚙", { [weak self] in self?.toggleAppearancePanel() }),
+            ("⚙", { [weak self] in self?.openContainingApp() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
@@ -562,6 +563,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         ]
         for (title, action) in controls {
             let button = makeButton(title, action: action)
+            if title == "⚙" { button.accessibilityLabel = "Open Aukkhor app" }
             button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 11 : 20)
             button.heightAnchor.constraint(equalToConstant: 34).isActive = true
             tools.addArrangedSubview(button)
@@ -632,6 +634,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildKeys() {
+        interactionHost.cancelActiveTouches()
         stopDelete()
         highlightedLensButton = nil
         pressLens.isHidden = true
@@ -639,6 +642,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
         interactionHost.touchExpansion = KeyboardPreferences.touchExpansion
+        interactionHost.directTouchRoutingEnabled = !isPreview && !typingOptions.glide && KeyboardPreferences.directTouchRouting
         suggestionRequestKey = nil
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
@@ -756,6 +760,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         buildKeys()
     }
 
+    private func openContainingApp() {
+        guard let destination = URL(string: "aukkhor://settings"),
+              let context = extensionContext, !isPreview else {
+            show("Open Aukkhor from your Home Screen")
+            return
+        }
+        // The public extension API can refuse this for keyboard extensions.
+        // Do not use UIApplication responder-chain workarounds or private APIs.
+        context.open(destination) { [weak self] opened in
+            guard !opened else { return }
+            DispatchQueue.main.async {
+                self?.show("iOS blocked opening Aukkhor. Open it from Home Screen.")
+            }
+        }
+    }
+
     private func buildAppearancePanel() {
         stack.addArrangedSubview(row([
             (KeyboardPreferences.autocorrect ? "Autocorrect: On" : "Autocorrect: Off", { [weak self] in
@@ -783,13 +803,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardPreferences.numberRow.toggle(); self?.buildKeys()
             })
         ]))
-        stack.addArrangedSubview(row([
+        let touchControls = row([
             ("Roundness −", { [weak self] in KeyboardPreferences.cornerRadius = max(0, KeyboardPreferences.cornerRadius - 2); self?.buildKeys() }),
             ("Roundness +", { [weak self] in KeyboardPreferences.cornerRadius = min(24, KeyboardPreferences.cornerRadius + 2); self?.buildKeys() }),
             ("Touch: \(Int(KeyboardPreferences.touchExpansion))", { [weak self] in
-                KeyboardPreferences.increaseTouchExpansion(); self?.buildKeys()
+                KeyboardPreferences.increaseTouchExpansion()
+                self?.buildKeys()
+                if let self {
+                    self.show("Touch: \(Int(KeyboardPreferences.touchExpansion)) pt · received \(self.interactionHost.receivedTouchCount) · direct \(self.interactionHost.routedTouchCount)")
+                }
             })
-        ]))
+        ])
+        if let touchButton = touchControls.arrangedSubviews.last as? UIButton {
+            let hold = UILongPressGestureRecognizer(target: self, action: #selector(toggleDirectTouchRoutingFromLongPress(_:)))
+            hold.minimumPressDuration = 0.55
+            touchButton.addGestureRecognizer(hold)
+            touchButton.accessibilityHint = "Tap to adjust sensitivity. Hold to toggle direct touch routing."
+        }
+        stack.addArrangedSubview(touchControls)
         stack.addArrangedSubview(row([
             ("Opacity −", { [weak self] in KeyboardPreferences.keyOpacity -= 0.1; self?.buildKeys() }),
             ("Opacity +", { [weak self] in KeyboardPreferences.keyOpacity += 0.1; self?.buildKeys() })
@@ -822,6 +853,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         colors.heightAnchor.constraint(equalToConstant: 36).isActive = true
         stack.addArrangedSubview(colors)
 
+    }
+
+    @objc private func toggleDirectTouchRoutingFromLongPress(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        KeyboardPreferences.directTouchRouting.toggle()
+        buildKeys()
+        show(KeyboardPreferences.directTouchRouting ? "Direct touch handling: On" : "Direct touch handling: Off")
     }
 
     func tapShift() {

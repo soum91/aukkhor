@@ -33,6 +33,10 @@ targets:
         CFBundleName: 'Aukkhor'
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.soum91.aukkhor
+            CFBundleURLSchemes:
+              - aukkhor
         UILaunchScreen: {}
         NSLocationWhenInUseUsageDescription: Optional experimental screenshot mode uses active location updates to try to keep Aukkhor running in the background. Coordinates are not stored or transmitted.
         NSLocationAlwaysAndWhenInUseUsageDescription: Optional experimental screenshot mode uses background location updates to try to observe new screenshots. This consumes battery and does not store or transmit coordinates.
