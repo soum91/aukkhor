@@ -352,12 +352,19 @@ final class KeyboardButton: UIButton {
     // so VoiceOver's touch-up-only activation still works once, not twice.
     var immediateActionTriggered = false
     var insertsOnTouchDown = false
+    var touchBeginAction: (() -> Void)?
     var usesPressLens = false
     var onHighlightChanged: ((Bool, KeyboardButton) -> Void)?
     // Finger contact often rolls just beyond a narrow key before lifting.
     // Keep that press valid while it remains near the original key.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         bounds.insetBy(dx: -8, dy: -9).contains(point)
+    }
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        // Insert on the raw touch path, before UIButton highlight animations
+        // and .touchDown dispatch. The action itself guards duplicate delivery.
+        if insertsOnTouchDown { touchBeginAction?() }
+        super.touchesBegan(touches, with: event)
     }
     override var isHighlighted: Bool {
         didSet {

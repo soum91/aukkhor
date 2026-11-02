@@ -158,6 +158,9 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let q = try XCTUnwrap(buttons(keyboard.view).first { $0.accessibilityLabel == "q" })
         XCTAssertTrue(q.insertsOnTouchDown)
         for count in 1...80 {
+            // UIButton.touchesBegan invokes this before UIKit sends .touchDown.
+            // Both paths must safely deliver exactly one character.
+            q.touchBeginAction?()
             q.sendActions(for: .touchDown)
             XCTAssertEqual(proxy.text.count, count, "Touch down #\(count) must insert immediately")
             q.sendActions(for: .touchUpInside)

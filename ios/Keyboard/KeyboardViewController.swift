@@ -49,7 +49,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let speech = AVSpeechSynthesizer()
     private let surface = UIView()
     private let backgroundImageView = UIImageView()
-    private let impact = UIImpactFeedbackGenerator(style: .light)
+    // iOS 26+ routes haptics through the view's scene. A generator constructed
+    // without a view can be silently ignored by the remote keyboard process.
+    private lazy var impact: UIImpactFeedbackGenerator = {
+        if #available(iOS 26.0, *) {
+            return UIImpactFeedbackGenerator(style: .light, view: surface)
+        }
+        return UIImpactFeedbackGenerator(style: .light)
+    }()
     private var typingOptions = TypingOptions()
     private var lastAppearanceSignature: String?
     private var candidateButtons: [UIButton] = []
@@ -275,7 +282,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func feedback() {
-        if typingOptions.haptics { impact.impactOccurred() }
+        if typingOptions.haptics {
+            impact.impactOccurred(intensity: 0.8)
+            impact.prepare()
+        }
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
 
@@ -349,28 +359,48 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if surface { KeyboardKeyAppearance.apply(to: button, palette: palette) }
         button.accessibilityLabel = title
         if title == "⌫" {
-            button.addAction(UIAction { [weak self] _ in
-                guard let self, self.acceptsTouchInput else { return }
-                self.startDelete()
+            // Call before UIKit's control bookkeeping. Some host text fields
+            // swallow the synthesized .touchDown control event under load.
+            let beginDelete = { [weak self, weak button] in
+                guard let self, self.acceptsTouchInput, let button,
+                      !button.immediateActionTriggered else { return }
+                button.immediateActionTriggered = true
                 self.feedback()
-            }, for: .touchDown)
+                self.startDelete()
+            }
+            button.touchBeginAction = beginDelete
             button.addAction(UIAction { [weak self] _ in
+                guard self?.acceptsTouchInput == true else { return }
+                beginDelete()
+            }, for: .touchDown)
+            button.addAction(UIAction { [weak self, weak button] _ in
                 guard let self, self.acceptsTouchInput else { return }
                 // Accessibility activation can send only touchUpInside.
                 if !self.deleteHeld { self.backspace() }
                 self.stopDelete()
+                button?.immediateActionTriggered = false
             }, for: .touchUpInside)
-            button.addAction(UIAction { [weak self] _ in self?.stopDelete() },
+            button.addAction(UIAction { [weak self, weak button] _ in
+                self?.stopDelete()
+                button?.immediateActionTriggered = false
+            },
                              for: [.touchUpOutside, .touchCancel])
         } else if immediateInput {
+            let beginInput = { [weak self, weak button] in
+                guard let self, self.acceptsTouchInput, let button,
+                      !button.immediateActionTriggered else { return }
+                button.immediateActionTriggered = true
+                self.feedback()
+                action()
+            }
+            button.touchBeginAction = beginInput
             button.addAction(UIAction { [weak self, weak button] _ in
-                guard let self, self.acceptsTouchInput else { return }
-                button?.immediateActionTriggered = true
-                action(); self.feedback()
+                guard self?.acceptsTouchInput == true else { return }
+                beginInput()
             }, for: .touchDown)
             button.addAction(UIAction { [weak self, weak button] _ in
                 guard let self, self.acceptsTouchInput else { return }
-                if button?.immediateActionTriggered != true { action(); self.feedback() }
+                if button?.immediateActionTriggered != true { self.feedback(); action() }
                 button?.immediateActionTriggered = false
             }, for: .touchUpInside)
             button.addAction(UIAction { [weak button] _ in button?.immediateActionTriggered = false },

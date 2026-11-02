@@ -114,11 +114,10 @@ import XCTest
         }
         evidence("extension-enabled-in-system-settings")
 
-        // iOS 27 sometimes leaves the host app in a background-only state
-        // after Settings changes keyboard extension permissions. Relaunch the
-        // test host cleanly; the installed keyboard persists across launches.
-        settings.terminate()
-        app.terminate()
+        // The iOS 27 simulator refuses XCTest's terminate() for Settings, and
+        // activate() can leave the test host backgrounded. Return via the
+        // public Home action and launch the host without terminating Settings.
+        XCUIDevice.shared.press(.home)
         app.launch()
         XCTAssertTrue(app.textFields["system-test-field"].waitForExistence(timeout: 10),
                       "Host app must reopen after installing the keyboard")
