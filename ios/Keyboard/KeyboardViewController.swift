@@ -91,7 +91,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
-    private let panelLens = KeyboardPanelLensView()
     private let pressLens = KeyboardPressLensView()
     private weak var highlightedLensButton: KeyboardButton?
     // Keep every control in a plain view above the decorative material. An
@@ -156,10 +155,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         glassBackdrop.clipsToBounds = true
         glassBackdrop.isUserInteractionEnabled = false
         surface.addSubview(glassBackdrop)
-        panelLens.translatesAutoresizingMaskIntoConstraints = false
-        panelLens.isUserInteractionEnabled = false
-        panelLens.accessibilityIdentifier = "keyboard.panelLens"
-        surface.addSubview(panelLens)
         pressLens.accessibilityIdentifier = "keyboard.pressLens"
         surface.addSubview(pressLens)
         interactionHost.translatesAutoresizingMaskIntoConstraints = false
@@ -173,12 +168,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
             glassBackdrop.topAnchor.constraint(equalTo: surface.topAnchor),
             glassBackdrop.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
-        ])
-        NSLayoutConstraint.activate([
-            panelLens.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
-            panelLens.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
-            panelLens.topAnchor.constraint(equalTo: surface.topAnchor),
-            panelLens.bottomAnchor.constraint(equalTo: surface.bottomAnchor)
         ])
         NSLayoutConstraint.activate([
             interactionHost.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
@@ -658,7 +647,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         letterButtons.removeAll()
         shiftButton = nil
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
-        panelLens.isHidden = KeyboardPreferences.preset != .clearPrism
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
         hasPhotoBackground = backgroundImageView.image != nil

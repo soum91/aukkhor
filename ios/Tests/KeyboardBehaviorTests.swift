@@ -250,20 +250,29 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(-301), enabledAt: enabled, now: now))
         XCTAssertFalse(PendingScreenshotStore.isFresh(now.addingTimeInterval(5), enabledAt: enabled, now: now))
     }
-    func testClearPrismUsesOneFullKeyboardLensWithoutPerKeyBubbles() throws {
+    func testLegacyClearPrismMigratesToFastSystemCanvasWithoutLens() throws {
         let savedPreset = KeyboardPreferences.preset
         let savedStyle = KeyboardPreferences.keycapStyle
         let savedSeamless = KeyboardPreferences.seamlessBackground
+        let savedGlass = KeyboardPreferences.usesGlass
+        let savedClear = KeyboardPreferences.clearGlass
         defer {
             KeyboardPreferences.preset = savedPreset
             KeyboardPreferences.keycapStyle = savedStyle
             KeyboardPreferences.seamlessBackground = savedSeamless
+            KeyboardPreferences.usesGlass = savedGlass
+            KeyboardPreferences.clearGlass = savedClear
         }
-        KeyboardPreferences.preset = .clearPrism
+        AukkhorSettings.defaults.set(KeyboardPreset.clearPrism.rawValue, forKey: "keyboardPreset")
         KeyboardPreferences.keycapStyle = 0
-        // Build 62 silently forced system blending and removed Clear Prism's glass.
         KeyboardPreferences.seamlessBackground = false
-        XCTAssertFalse(KeyboardPreferences.seamlessBackground)
+        KeyboardPreferences.usesGlass = true
+        KeyboardPreferences.clearGlass = true
+        XCTAssertEqual(KeyboardPreferences.preset, .system)
+        XCTAssertFalse(KeyboardPreferences.glassEnabled)
+        XCTAssertTrue(KeyboardPreferences.seamlessBackground)
+        XCTAssertFalse(KeyboardPreferences.clearGlass)
+        XCTAssertFalse(KeyboardPreset.allCases.contains(.clearPrism))
         let keyboard = KeyboardViewController()
         keyboard.isPreview = true
         keyboard.loadViewIfNeeded()
@@ -272,22 +281,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let effects = all.compactMap { $0 as? UIVisualEffectView }
         XCTAssertEqual(effects.count, 1)
         let lens = try XCTUnwrap(all.compactMap { $0 as? KeyboardPressLensView }.first)
-        let panel = try XCTUnwrap(all.compactMap { $0 as? KeyboardPanelLensView }.first)
         XCTAssertTrue(lens.isHidden)
-        XCTAssertFalse(panel.isHidden, "The glass treatment must span the whole keyboard")
-        XCTAssertFalse(panel.isUserInteractionEnabled, "Glass must never intercept typing")
-        XCTAssertGreaterThanOrEqual(panel.layer.sublayers?.count ?? 0, 4)
-        XCTAssertEqual(panel.backgroundColor?.cgColor.alpha ?? 1, 0)
-        XCTAssertFalse(KeyboardPreferences.usesSystemCanvas)
-        XCTAssertEqual(KeyboardPreferences.glassTintStrength, 0)
-        if #available(iOS 26.0, *) {
-            let glass = try XCTUnwrap(effects.first?.effect as? UIGlassEffect)
-            XCTAssertFalse(glass.isInteractive, "Glass is decorative and cannot delay key events")
-        } else {
-            XCTAssertTrue(effects.first?.effect is UIBlurEffect)
-        }
+        XCTAssertFalse(all.contains { $0.accessibilityIdentifier == "keyboard.panelLens" })
+        XCTAssertTrue(KeyboardPreferences.usesSystemCanvas)
+        XCTAssertNil(effects.first?.effect, "No live glass or blur is allowed on the migrated canvas")
         let surface = try XCTUnwrap(all.first { $0.accessibilityIdentifier == "keyboard.surface" })
-        XCTAssertEqual(surface.layer.cornerRadius, 20)
+        XCTAssertEqual(surface.layer.cornerRadius, 0)
         XCTAssertEqual(surface.backgroundColor?.cgColor.alpha ?? 1, 0)
         XCTAssertTrue(all.compactMap { $0 as? UIButton }.allSatisfy {
             !$0.subviews.contains { $0 is UIVisualEffectView }
@@ -299,9 +298,6 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(lens.isHidden, "No old bubble around an individual key")
         letter.isHighlighted = false
         XCTAssertTrue(lens.isHidden)
-        KeyboardPreferences.preset = .system
-        keyboard.reloadAppearance()
-        XCTAssertTrue(panel.isHidden, "Other themes must retain their original canvas")
     }
     func testBuild61SettingsAndCriticalKeysInsertOnTouchDown() throws {
         let savedPreset = KeyboardPreferences.preset
@@ -310,7 +306,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             KeyboardPreferences.preset = savedPreset
             KeyboardPreferences.numberRow = savedNumberRow
         }
-        KeyboardPreferences.preset = .clearPrism
+        KeyboardPreferences.preset = .system
         KeyboardPreferences.numberRow = true
         let keyboard = KeyboardViewController()
         keyboard.isPreview = true
@@ -330,15 +326,11 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             XCTAssertTrue(key.insertsOnTouchDown, "\(label) must not wait for finger release")
         }
     }
-    func testClearPrismRestoresBuild61KeyInk() {
+    func testRetiredClearPrismCannotBeSelectedAgain() {
         let savedPreset = KeyboardPreferences.preset
         defer { KeyboardPreferences.preset = savedPreset }
         KeyboardPreferences.preset = .clearPrism
-        let light = KeyboardPalette.selected(dark: false)
-        let dark = KeyboardPalette.selected(dark: true)
-        XCTAssertEqual(light.foreground, UIColor.white)
-        XCTAssertEqual(light.border, UIColor.white)
-        XCTAssertEqual(dark.foreground, UIColor.white)
-        XCTAssertEqual(dark.border, UIColor.white)
+        XCTAssertEqual(KeyboardPreferences.preset, .system)
+        XCTAssertEqual(KeyboardPalette.selected(dark: false).foreground, UIColor.label)
     }
 }
