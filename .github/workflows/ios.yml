@@ -1,6 +1,7 @@
-# Owner-authorized rollback: build 78 passed keyboard behavior/layout tests.
-# iOS 27 unsigned keyboard activation is unverified; this packaging-only run
-# retains the tested rollback source [publish-unverified].
+# Owner-authorized touch responsiveness preview: build 81 passed the entire
+# keyboard behavior/layout suite including configurable touch targets.
+# The iOS 27 unsigned installed-keyboard test is unverified; the source is
+# unchanged in this packaging-only run [publish-unverified].
 name: Aukkhor iOS unsigned build
 on:
   workflow_dispatch:
