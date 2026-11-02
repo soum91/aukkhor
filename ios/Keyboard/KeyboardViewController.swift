@@ -67,6 +67,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suppressedReplacement: String?
     #if DEBUG
     var testingProxy: UITextDocumentProxy?
+    var testingAllowTouchEvents = false
     var testingReplacements: [String: String] {
         get { replacements }
         set { replacements = newValue }
@@ -79,6 +80,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func testingDelete() { backspace() }
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
+    func testingFormatSelection(_ action: String) { if let action = SelectionFormat(rawValue: action) { formatSelection(action) } }
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
@@ -277,6 +279,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
 
+    private var acceptsTouchInput: Bool {
+        #if DEBUG
+        return !isPreview || testingAllowTouchEvents
+        #else
+        return !isPreview
+        #endif
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard typingOptions.glide, mode == .english,
               !symbols, !emojiMode, !clipboardPanel,
@@ -340,12 +350,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.accessibilityLabel = title
         if title == "⌫" {
             button.addAction(UIAction { [weak self] _ in
-                guard let self, !self.isPreview else { return }
+                guard let self, self.acceptsTouchInput else { return }
                 self.startDelete()
                 self.feedback()
             }, for: .touchDown)
             button.addAction(UIAction { [weak self] _ in
-                guard let self, !self.isPreview else { return }
+                guard let self, self.acceptsTouchInput else { return }
                 // Accessibility activation can send only touchUpInside.
                 if !self.deleteHeld { self.backspace() }
                 self.stopDelete()
@@ -354,12 +364,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                              for: [.touchUpOutside, .touchCancel])
         } else if immediateInput {
             button.addAction(UIAction { [weak self, weak button] _ in
-                guard let self, !self.isPreview else { return }
+                guard let self, self.acceptsTouchInput else { return }
                 button?.immediateActionTriggered = true
                 action(); self.feedback()
             }, for: .touchDown)
             button.addAction(UIAction { [weak self, weak button] _ in
-                guard let self, !self.isPreview else { return }
+                guard let self, self.acceptsTouchInput else { return }
                 if button?.immediateActionTriggered != true { action(); self.feedback() }
                 button?.immediateActionTriggered = false
             }, for: .touchUpInside)
@@ -370,7 +380,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                                  for: [.touchUpInside, .touchUpOutside])
             }
         } else {
-            button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.isPreview != true else { return }; action(); self?.feedback() }, for: .touchUpInside)
+            button.addAction(UIAction(identifier: UIAction.Identifier("aukkhor.tap")) { [weak self] _ in guard self?.acceptsTouchInput == true else { return }; action(); self?.feedback() }, for: .touchUpInside)
         }
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
@@ -571,6 +581,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         suggestions.spacing = 4
         installSuggestionControls()
         strip.addArrangedSubview(suggestions)
+        // Text tools live in the existing 24pt strip. Never add a keyboard row
+        // or alter the expanded Settings panel to accommodate them.
+        let format = stripButton("Aa", action: {})
+        format.accessibilityLabel = "Format selected text"
+        installFormatMenu(on: format)
+        strip.addArrangedSubview(format)
         strip.addArrangedSubview(stripButton(mode.label, action: { [weak self] in self?.cycleMode() }))
         let hand = stripButton("↔", action: {})
         hand.accessibilityLabel = "One-handed layout"
@@ -952,13 +968,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard allowShortcuts || allowCorrection else { return }
         let current = currentWord()
         guard !current.isEmpty, current != suppressedReplacement else { return }
-        // System text shortcuts are explicit, case-sensitive user choices.
-        // Don't turn "auto" into "AUTO" (or vice versa) by normalizing them.
-        let shortcut = allowShortcuts ? replacements[current] : nil
+        // iOS's supplementary lexicon can contain case-only transformations.
+        // They look like random auto-capitalization even with Autocorrect Off.
+        // Never silently change the case of an otherwise identical word.
+        let shortcut = allowShortcuts ? replacements[current].flatMap { replacement in
+            replacement.caseInsensitiveCompare(current) == .orderedSame ? nil : replacement
+        } : nil
         // Never autocorrect acronyms, mixed-case words, or manual Shift input.
         let suggestion = shortcut ?? (allowCorrection && current == current.lowercased()
             ? KeyboardSuggestions.correction(current, replacements: [:]) : nil)
         guard let suggestion, suggestion != current else { return }
+        // Autocorrect must never introduce uppercase characters. Explicit
+        // multiword shortcuts remain available under Replacements: On.
+        if shortcut == nil && suggestion != suggestion.lowercased() { return }
         replaceWord(current, with: suggestion)
         pendingReplacement = (current, suggestion + delimiter, textDocumentProxy.documentIdentifier)
     }
@@ -1015,19 +1037,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    // The indexed local dictionary is small. Once host-context reads have been
-    // coalesced, a synchronous lookup avoids background-queue contention and
-    // stale callbacks resetting suggestions during fast typing.
+    // Keep candidate generation off the input/main thread. A late result must
+    // never overwrite a newer word's suggestions.
     func requestSuggestions(prefix: String, phonetic: Bool, bangla: Bool) {
-        contextRefreshGeneration += 1
-        contextRefreshWork?.cancel()
         let key = "\(phonetic):\(bangla):\(prefix)"
         guard suggestionRequestKey != key else { return }
         suggestionRequestKey = key
         guard !prefix.isEmpty else { setCandidates([]); return }
-        let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
-            : KeyboardSuggestions.complete(prefix, banglaMode: bangla, replacements: replacements)
-        setCandidates(values)
+        let shortcuts = replacements
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
+                : KeyboardSuggestions.complete(prefix, banglaMode: bangla, replacements: shortcuts)
+            DispatchQueue.main.async {
+                // The host may report an unchanged context again after the
+                // lookup began. Comparing the prefix (not just a generation)
+                // avoids dropping valid results for that same word.
+                guard let self, self.suggestionRequestKey == key,
+                      !self.settingsPanel, !self.emojiMode, !self.clipboardPanel,
+                      !self.symbols, self.typingOptions.suggestions else { return }
+                self.setCandidates(values)
+            }
+        }
     }
 
     private func refreshSuggestions() {
@@ -1043,7 +1073,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         // Host context is cross-process. Coalesce callbacks and leave the key
         // action before reading it; ordinary English insertion stays immediate.
-        suggestionRequestKey = nil
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.contextRefreshGeneration == generation else { return }
             let text = self.mode == .phonetic && !self.buffer.isEmpty ? self.buffer : self.currentWord()
@@ -1109,6 +1138,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func type(_ value: String) {
+        // A deliberate Shift tap followed by typing is not a Caps Lock double
+        // tap, even if the user is fast enough to hit Shift again in 350ms.
+        lastShiftTap = .distantPast
         pendingReplacement = nil
         if value.first?.isLetter == true { suppressedReplacement = nil }
         if emojiMode && emojiSearch {
@@ -1165,7 +1197,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let timer = Timer(fire: Date().addingTimeInterval(0.35), interval: 0.05, repeats: true) { [weak self] _ in
             guard let self, self.deleteHeld else { return }
             self.deleteTicks += 1
-            let count = self.deleteTicks > 36 ? 6 : (self.deleteTicks > 12 ? 2 : 1)
+            // A burst of 120 cross-process deleteBackward() calls per second
+            // blocked normal taps on actual iPhones. Bound the IPC burst.
+            let count = self.deleteTicks > 36 ? 3 : 1
             for _ in 0..<count { self.backspace(refresh: false) }
             if self.deleteTicks % 3 == 0 { self.refreshSuggestions() }
         }
@@ -1213,6 +1247,61 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func selectedOrNearbyText() -> String? {
         if let selected = textDocumentProxy.selectedText, !selected.isEmpty { return selected }
         return textDocumentProxy.documentContextBeforeInput?.split(whereSeparator: { !$0.isLetter }).last.map(String.init)
+    }
+
+    private enum SelectionFormat: String {
+        case uppercase, lowercase, titlecase, bold, italic, strikethrough, indent, outdent
+    }
+
+    private func installFormatMenu(on button: UIButton) {
+        func choice(_ title: String, _ format: SelectionFormat) -> UIAction {
+            UIAction(title: title) { [weak self] _ in self?.formatSelection(format) }
+        }
+        button.menu = UIMenu(title: "Select text in the app first", children: [
+            UIMenu(title: "Change case", children: [
+                choice("UPPERCASE", .uppercase),
+                choice("lowercase", .lowercase),
+                choice("Title Case", .titlecase)
+            ]),
+            UIMenu(title: "Plain-text / Markdown", children: [
+                choice("**Bold** (Markdown)", .bold),
+                choice("*Italic* (Markdown)", .italic),
+                choice("~~Strikethrough~~ (Markdown)", .strikethrough),
+                choice("Indent (4 spaces)", .indent),
+                choice("Outdent", .outdent)
+            ])
+        ])
+        button.showsMenuAsPrimaryAction = true
+    }
+
+    private func formatSelection(_ format: SelectionFormat) {
+        guard let text = textDocumentProxy.selectedText, !text.isEmpty else {
+            show("Select text first to format it")
+            return
+        }
+        let transformed: String
+        switch format {
+        case .uppercase: transformed = text.uppercased()
+        case .lowercase: transformed = text.lowercased()
+        case .titlecase: transformed = text.capitalized
+        case .bold: transformed = "**\(text)**"
+        case .italic: transformed = "*\(text)*"
+        case .strikethrough: transformed = "~~\(text)~~"
+        case .indent:
+            transformed = text.components(separatedBy: "\n").map { "    " + $0 }.joined(separator: "\n")
+        case .outdent:
+            transformed = text.components(separatedBy: "\n").map {
+                let count = $0.prefix(4).prefix(while: { $0 == " " }).count
+                return String($0.dropFirst(count))
+            }.joined(separator: "\n")
+        }
+        guard transformed != text else { return }
+        commitBuffer()
+        pendingReplacement = nil
+        // insertText replaces the host's current selection; the extension has
+        // no supported API for setting Notes' NSAttributedString attributes.
+        textDocumentProxy.insertText(transformed)
+        refreshSuggestions()
     }
 
     private func paste() {

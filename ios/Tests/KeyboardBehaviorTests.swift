@@ -4,14 +4,22 @@ import UIKit
 
 private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     var text = ""
+    private var selection: Range<String.Index>?
     var documentIdentifier = UUID()
     var documentContextBeforeInput: String? { text }
     var documentContextAfterInput: String? { "" }
-    var selectedText: String? { nil }
+    var selectedText: String? { selection.map { String(text[$0]) } }
     var documentInputMode: UITextInputMode? { nil }
     var hasText: Bool { !text.isEmpty }
-    func insertText(_ text: String) { self.text += text }
-    func deleteBackward() { if !text.isEmpty { text.removeLast() } }
+    func select(_ substring: String) { selection = text.range(of: substring) }
+    func insertText(_ text: String) {
+        if let selection { self.text.replaceSubrange(selection, with: text); self.selection = nil }
+        else { self.text += text }
+    }
+    func deleteBackward() {
+        if let selection { text.removeSubrange(selection); self.selection = nil }
+        else if !text.isEmpty { text.removeLast() }
+    }
     func adjustTextPosition(byCharacterOffset offset: Int) {}
     func setMarkedText(_ markedText: String, selectedRange: NSRange) { text += markedText }
     func unmarkText() {}
@@ -100,9 +108,9 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingTypeCharacter("f")
         XCTAssertEqual(proxy.text, "a.b?c\ndEf")
     }
-    func testNoUnsolicitedUppercaseOrCaseInsensitiveShortcutExpansion() {
+    func testCaseOnlySystemReplacementIsNeverAppliedEvenWhenAutocorrectOff() {
         let (keyboard, proxy) = keyboard()
-        keyboard.testingReplacements = ["auto": "AUTO"]
+        keyboard.testingReplacements = ["auto": "AUTO", "Auto": "AUTO", "omw": "On my way"]
         KeyboardPreferences.autocorrect = false
         keyboard.testingType("Auto")
         keyboard.testingType(" ")
@@ -110,12 +118,81 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         proxy.text = ""
         keyboard.testingType("auto")
         keyboard.testingType(" ")
-        XCTAssertEqual(proxy.text, "AUTO ") // Explicit user shortcut is preserved.
+        XCTAssertEqual(proxy.text, "auto ")
+        proxy.text = ""
+        keyboard.testingType("omw")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "On my way ", "Real multiword text replacements still work")
         KeyboardPreferences.textReplacement = false
         proxy.text = ""
         keyboard.testingType("auto")
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "auto ")
+    }
+    func testNoAccidentalCapsLockFromRapidShiftLetterShift() {
+        let (keyboard, proxy) = keyboard()
+        keyboard.tapShift()
+        keyboard.testingTypeCharacter("a")
+        keyboard.tapShift()
+        keyboard.testingTypeCharacter("b")
+        keyboard.testingTypeCharacter("c")
+        XCTAssertEqual(proxy.text, "ABc", "Two separate one-shot shifts must not become Caps Lock")
+    }
+    func testRapidTypingPreservesEveryCharacterAndOriginalCase() {
+        KeyboardPreferences.suggestions = true
+        KeyboardPreferences.autocorrect = false
+        let (keyboard, proxy) = keyboard()
+        let input = String(repeating: "auto", count: 45)
+        keyboard.testingReplacements = ["auto": "AUTO"]
+        for character in input { keyboard.testingTypeCharacter(String(character)) }
+        XCTAssertEqual(proxy.text, input)
+    }
+    func testRealTouchDownActionsNeverMissOrDoubleInsert() throws {
+        KeyboardPreferences.autocorrect = false
+        KeyboardPreferences.suggestions = false
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingAllowTouchEvents = true
+        func buttons(_ view: UIView) -> [KeyboardButton] {
+            (view as? KeyboardButton).map { [$0] } ?? view.subviews.flatMap(buttons)
+        }
+        let q = try XCTUnwrap(buttons(keyboard.view).first { $0.accessibilityLabel == "q" })
+        XCTAssertTrue(q.insertsOnTouchDown)
+        for count in 1...80 {
+            q.sendActions(for: .touchDown)
+            XCTAssertEqual(proxy.text.count, count, "Touch down #\(count) must insert immediately")
+            q.sendActions(for: .touchUpInside)
+            XCTAssertEqual(proxy.text.count, count, "Touch up must not double insert")
+        }
+        XCTAssertEqual(proxy.text, String(repeating: "q", count: 80))
+    }
+    func testSelectedTextCaseAndMarkdownFormattingNeverResizeKeyboard() throws {
+        let (keyboard, proxy) = keyboard()
+        let initialHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
+        proxy.text = "hello WORLD"
+        proxy.select("hello WORLD")
+        keyboard.testingFormatSelection("uppercase")
+        XCTAssertEqual(proxy.text, "HELLO WORLD")
+        proxy.select("HELLO WORLD")
+        keyboard.testingFormatSelection("lowercase")
+        XCTAssertEqual(proxy.text, "hello world")
+        proxy.select("hello world")
+        keyboard.testingFormatSelection("titlecase")
+        XCTAssertEqual(proxy.text, "Hello World")
+        proxy.select("Hello World")
+        keyboard.testingFormatSelection("bold")
+        XCTAssertEqual(proxy.text, "**Hello World**")
+        proxy.select("Hello World")
+        keyboard.testingFormatSelection("strikethrough")
+        XCTAssertEqual(proxy.text, "**~~Hello World~~**")
+        proxy.text = "one\ntwo"
+        proxy.select("one\ntwo")
+        keyboard.testingFormatSelection("indent")
+        XCTAssertEqual(proxy.text, "    one\n    two")
+        proxy.select("    one\n    two")
+        keyboard.testingFormatSelection("outdent")
+        XCTAssertEqual(proxy.text, "one\ntwo")
+        XCTAssertEqual(try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight,
+                       initialHeight, "Formatting must not affect build 61 key geometry")
     }
     func testDictionaryCorrectionNeverChangesManualCapitalization() {
         let (keyboard, proxy) = keyboard()

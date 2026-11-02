@@ -367,7 +367,9 @@ final class KeyboardButton: UIButton {
             titleLabel?.alpha = isHighlighted ? pressedAlpha : 1
             imageView?.alpha = isHighlighted ? pressedAlpha : 1
             if usesPressLens {
-                let magnification: CGFloat = isHighlighted ? 1.09 : 1
+                // Optical enlargement stays inside the transient press lens;
+                // the button frame and its neighbors never move or relayout.
+                let magnification: CGFloat = isHighlighted ? 1.12 : 1
                 let transform = CGAffineTransform(scaleX: magnification, y: magnification)
                 titleLabel?.transform = transform
                 imageView?.transform = transform
@@ -387,33 +389,59 @@ final class KeyboardButton: UIButton {
 // clear glass material is the real refractive surface. Never add a permanent
 // rainbow border or dozens of live glass views to this keyboard extension.
 final class KeyboardPressLensView: UIView {
+    private let transparentCore = CAGradientLayer()
     private let specular = CAGradientLayer()
     private let rim = CAShapeLayer()
+    private let lowerRefraction = CAGradientLayer()
+    private let lowerRefractionMask = CAShapeLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         isHidden = true
         backgroundColor = .clear
-        specular.colors = [UIColor.white.withAlphaComponent(0.4).cgColor,
-                           UIColor.white.withAlphaComponent(0.07).cgColor,
-                           UIColor.white.withAlphaComponent(0.03).cgColor,
-                           UIColor.systemCyan.withAlphaComponent(0.13).cgColor]
-        specular.locations = [0, 0.24, 0.8, 1]
+        // A nearly clear interior over the single iOS glass canvas. No black
+        // fill and no always-visible multicolor border around the keyboard.
+        transparentCore.colors = [UIColor.white.withAlphaComponent(0.10).cgColor,
+                                  UIColor.clear.cgColor,
+                                  UIColor.white.withAlphaComponent(0.035).cgColor]
+        transparentCore.locations = [0, 0.48, 1]
+        transparentCore.startPoint = CGPoint(x: 0.15, y: 0)
+        transparentCore.endPoint = CGPoint(x: 0.75, y: 1)
+        layer.addSublayer(transparentCore)
+        specular.colors = [UIColor.white.withAlphaComponent(0.68).cgColor,
+                           UIColor.white.withAlphaComponent(0.08).cgColor,
+                           UIColor.white.withAlphaComponent(0.22).cgColor,
+                           UIColor.systemTeal.withAlphaComponent(0.36).cgColor]
+        specular.locations = [0, 0.30, 0.74, 1]
         specular.startPoint = CGPoint(x: 0, y: 0)
         specular.endPoint = CGPoint(x: 1, y: 1)
         layer.addSublayer(specular)
         rim.fillColor = UIColor.clear.cgColor
-        rim.strokeColor = UIColor.white.withAlphaComponent(0.32).cgColor
-        rim.lineWidth = 1
+        rim.strokeColor = UIColor.white.cgColor
+        rim.lineWidth = 1.6
         specular.mask = rim
+        // The bottom arc reproduces the magnifying-glass edge in the reference
+        // photo: white-to-teal light, not a static RGB/chromatic rainbow.
+        lowerRefraction.colors = [UIColor.white.withAlphaComponent(0.20).cgColor,
+                                  UIColor.systemTeal.withAlphaComponent(0.72).cgColor,
+                                  UIColor.systemCyan.withAlphaComponent(0.55).cgColor,
+                                  UIColor.white.withAlphaComponent(0.14).cgColor]
+        lowerRefraction.locations = [0, 0.25, 0.72, 1]
+        lowerRefraction.startPoint = CGPoint(x: 0, y: 0.5)
+        lowerRefraction.endPoint = CGPoint(x: 1, y: 0.5)
+        lowerRefractionMask.fillColor = UIColor.clear.cgColor
+        lowerRefractionMask.strokeColor = UIColor.white.cgColor
+        lowerRefractionMask.lineWidth = 2.5
+        lowerRefraction.mask = lowerRefractionMask
+        layer.addSublayer(lowerRefraction)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func display(over keyRect: CGRect) {
         // The specular only appears during a press. It sits behind the touch
         // host, so it cannot block or defer any character insertion.
-        frame = keyRect.insetBy(dx: -6, dy: -7)
+        frame = keyRect.insetBy(dx: -7, dy: -8)
         isHidden = false
         setNeedsLayout()
     }
@@ -422,10 +450,19 @@ final class KeyboardPressLensView: UIView {
         super.layoutSubviews()
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        transparentCore.frame = bounds
+        transparentCore.cornerRadius = bounds.height / 2
         specular.frame = bounds
         rim.frame = bounds
         rim.path = UIBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1),
                                cornerRadius: bounds.height / 2).cgPath
+        lowerRefraction.frame = bounds
+        lowerRefractionMask.frame = bounds
+        let bottom = UIBezierPath()
+        bottom.move(to: CGPoint(x: bounds.width * 0.12, y: bounds.maxY - 3.5))
+        bottom.addQuadCurve(to: CGPoint(x: bounds.width * 0.88, y: bounds.maxY - 3.5),
+                            controlPoint: CGPoint(x: bounds.midX, y: bounds.maxY + 1))
+        lowerRefractionMask.path = bottom.cgPath
         CATransaction.commit()
     }
 }
