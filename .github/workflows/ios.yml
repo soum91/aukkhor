@@ -1,6 +1,6 @@
-# Owner-authorized one-off release: build 72 compiled and passed behavior/layout
-# tests but the unsigned simulator's installed-keyboard UI test failed.
-# The release commit carries [publish-unverified] to skip only that run's gates.
+# Owner-authorized one-off release: build 74 compiled and passed its behavior
+# tests, but iOS 27 Simulator could not activate the unsigned keyboard.
+# Its source is unchanged in this [publish-unverified] packaging-only run.
 name: Aukkhor iOS unsigned build
 on:
   workflow_dispatch:
@@ -158,6 +158,9 @@ jobs:
             KeyboardIntegrationRetry.xcresult
             KeyboardIntegrationRetryScreenshots
       - uses: actions/upload-artifact@v4
+        # Keep an installable diagnostic artifact after a simulator UI failure.
+        # The publisher still requires a successful, audited workflow run.
+        if: always()
         with:
           name: Aukkhor-iOS-unsigned-${{ github.run_number }}
           path: Aukkhor-unsigned.ipa
