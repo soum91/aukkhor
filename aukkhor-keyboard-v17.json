@@ -10,11 +10,21 @@
       "name": "Aukkhor",
       "bundleIdentifier": "dev.soum91.aukkhor",
       "developerName": "soum91",
-      "subtitle": "iPhone keyboard · 0.2.0.77",
+      "subtitle": "iPhone keyboard · 0.2.0.79",
       "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
       "category": "utilities",
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
+        {
+          "version": "0.2.0.79",
+          "buildVersion": "79",
+          "date": "2026-11-02",
+          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
+          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.79/Aukkhor-unsigned.ipa",
+          "size": 1362964,
+          "minOSVersion": "16.0"
+        },
         {
           "version": "0.2.0.77",
           "buildVersion": "77",
@@ -64,22 +74,12 @@
           "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.66/Aukkhor-unsigned.ipa",
           "size": 1349433,
           "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.65",
-          "buildVersion": "65",
-          "date": "2026-11-02",
-          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
-          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.65/Aukkhor-unsigned.ipa",
-          "size": 1351622,
-          "minOSVersion": "16.0"
         }
       ],
-      "version": "0.2.0.77",
-      "buildVersion": "77",
-      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.77/Aukkhor-unsigned.ipa",
-      "size": 1371881,
+      "version": "0.2.0.79",
+      "buildVersion": "79",
+      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.79/Aukkhor-unsigned.ipa",
+      "size": 1362964,
       "minOSVersion": "16.0",
       "versionDate": "2026-11-02",
       "versionDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs."
