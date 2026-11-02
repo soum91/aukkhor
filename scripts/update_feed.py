@@ -57,6 +57,15 @@ def update(version: str, build_number: str, ipa: Path) -> None:
         previous for previous in app["versions"]
         if previous.get("version") != version
     ]
+    app.update({
+        "version": entry["version"],
+        "buildVersion": entry["buildVersion"],
+        "downloadURL": entry["downloadURL"],
+        "size": entry["size"],
+        "minOSVersion": entry["minOSVersion"],
+        "versionDate": entry["date"],
+        "versionDescription": CHANGES,
+    })
     data["apps"] = [app]
     data["sourceURL"] = SOURCE
     encoded = json.dumps(data, ensure_ascii=False, indent=2) + "\n"

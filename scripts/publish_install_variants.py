@@ -15,6 +15,19 @@ IPA = "Aukkhor-unsigned.ipa"
 HOST_ID = "dev.soum91.aukkhor"
 KEYBOARD_ID = "dev.soum91.aukkhor.keyboard"
 
+def synchronize_latest_version(main_app, note):
+    """Keep legacy single-version installers on the newest verified IPA."""
+    latest = main_app["versions"][0]
+    main_app.update({
+        "version": latest["version"],
+        "buildVersion": latest["buildVersion"],
+        "downloadURL": latest["downloadURL"],
+        "size": latest["size"],
+        "minOSVersion": latest["minOSVersion"],
+        "versionDate": latest["date"],
+        "versionDescription": note,
+    })
+
 def inspect(path):
     if not path.is_file() or path.stat().st_size < 100_000:
         raise SystemExit(f"Missing or unexpectedly small IPA: {path}")
@@ -78,6 +91,10 @@ def main():
             "size": (args.directory / IPA).stat().st_size,
             "minOSVersion": "16.0",
         }] + [old for old in current if old.get("version") != version][:5]
+        # Older Zeus/FlareStore consumers read these top-level fields instead
+        # of versions[0]. Leaving them pinned to a previous build silently
+        # installed the old keyboard, making already-fixed bugs appear to return.
+        synchronize_latest_version(main_app, note)
         apps[:] = [main_app] + [
             a for a in apps
             if a is not main_app

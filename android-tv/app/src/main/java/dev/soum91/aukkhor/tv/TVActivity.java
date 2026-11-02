@@ -36,6 +36,7 @@ public final class TVActivity extends Activity {
     private static final int ACCENT = Color.rgb(103, 220, 232);
     private static final int GOLD = Color.rgb(255, 203, 117);
     private TextView status, deviceCode, fingerprint, ipAddress, keyboardState;
+    private Button numberRowButton;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -91,7 +92,7 @@ public final class TVActivity extends Activity {
         return view;
     }
 
-    private void action(LinearLayout into, String label, Runnable callback) {
+    private Button action(LinearLayout into, String label, Runnable callback) {
         Button b = new Button(this);
         b.setAllCaps(false);
         b.setText(label);
@@ -110,6 +111,7 @@ public final class TVActivity extends Activity {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = dp(11);
         into.addView(b, lp);
+        return b;
     }
 
     private LinearLayout panel() {
@@ -177,7 +179,15 @@ public final class TVActivity extends Activity {
                 (InputMethodManager)getSystemService(INPUT_METHOD_SERVICE);
             if (imm != null) imm.showInputMethodPicker();
         });
-        text(setup, "Select Aukkhor as the TV input method. You can also type with the TV remote.",
+        numberRowButton = action(setup, "Number row: Off", () -> {
+            boolean enabled = getSharedPreferences("aukkhor_tv_ui", MODE_PRIVATE)
+                .getBoolean("number_row", false);
+            getSharedPreferences("aukkhor_tv_ui", MODE_PRIVATE).edit()
+                .putBoolean("number_row", !enabled).apply();
+            updateNumberRow();
+        });
+        updateNumberRow();
+        text(setup, "Select Aukkhor as the TV input method. Navigate with the remote's arrows and OK. Hold OK on ⌫ to delete repeatedly; switch to Bangla with EN.",
             14, MUTED, false);
 
         text(pairing, "2  Pair your iPhone directly", 21, FG, true);
@@ -213,6 +223,14 @@ public final class TVActivity extends Activity {
             15, MUTED, false);
 
         startReceiver();
+    }
+
+    private void updateNumberRow() {
+        if (numberRowButton == null) return;
+        boolean enabled = getSharedPreferences("aukkhor_tv_ui", MODE_PRIVATE)
+            .getBoolean("number_row", false);
+        numberRowButton.setText("Number row: " + (enabled ? "On" : "Off") +
+            " (takes effect when keyboard next opens)");
     }
 
     private void startReceiver() {

@@ -130,8 +130,10 @@ signing identity, not a temporary CI debug key. EmberTV's `repo.json` includes t
    When the selected Aukkhor TV IME sees a normal focused editor, the iPhone app opens a native
    text-entry sheet automatically and brings up the iPhone's keyboard. Tap **Send to TV** to
    commit the entered text to the currently focused TV field.
-5. The native Android TV keyboard includes English, first-pass phonetic Bangla and direct Bangla,
-   D-pad controls, Backspace, Space, symbols and Done.
+5. The native Android TV keyboard includes English, phonetic Bangla and direct Bangla with a
+   consonant/vowel selector. Navigate using the D-pad and press OK to type. Hold OK on ⌫ to
+   erase repeatedly. Use 123 for symbols, the optional number-row switch on the setup screen,
+   and an Enter key that follows the focused app's Search/Go/Next action.
 
 **Limits:** iOS will suspend ordinary LAN polling while Aukkhor is backgrounded; this is not an
 unattended Apple-Watch-style notification while the app is closed. For reliable background wake

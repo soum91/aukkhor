@@ -263,8 +263,7 @@ public final class TVBridgeServer implements AutoCloseable {
                 main.post(()->{
                     AukkhorIME current=ime;
                     if(current!=null && fieldAvailable && target.equals(fieldSession)){
-                        InputConnection connection=current.getCurrentInputConnection();
-                        ok[0]=connection!=null && connection.commitText(text,1);
+                        ok[0]=current.commitRemoteText(text);
                     }
                     applied.countDown();
                 });
