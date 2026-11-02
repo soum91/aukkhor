@@ -264,6 +264,11 @@ private final class KeyboardHostField: UITextField {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         let first = KeyboardButton(type: .custom)
         let second = KeyboardButton(type: .custom)
+        // Exercise the historical narrow-key tolerance explicitly. The
+        // default is now configurable and intentionally more forgiving.
+        host.touchExpansion = 6
+        first.touchExpansion = 6
+        second.touchExpansion = 6
         first.frame = CGRect(x: 4, y: 4, width: 40, height: 36)
         second.frame = CGRect(x: 50, y: 4, width: 40, height: 36)
         host.addSubview(first)
