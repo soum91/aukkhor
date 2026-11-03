@@ -94,6 +94,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var touchDebuggerRunning = false
     private var touchSamples: [KeyboardTouchSample] = []
     private var rootTouchSamples: [KeyboardRootTouchSample] = []
+    private var debugStartMovementCount = 0
     private var debugProxyInsertions: [String] = []
     private var debugProxyTimes: [Int] = []
     private var debugInitialContextLength: Int?
@@ -152,6 +153,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var palette = KeyboardPalette.selected(dark: false)
     var enableInputClicks: Bool { typingOptions.sounds }
 
+    // Apple-supported request to prioritize the rightmost and leftmost key
+    // touches over system edge gestures. We never disable system recognizers.
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        [.left, .right]
+    }
+
     override func loadView() {
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width,
                                                    height: KeyboardPreferences.typingHeight), inputViewStyle: .default)
@@ -165,6 +172,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         surface.translatesAutoresizingMaskIntoConstraints = false
         surface.accessibilityIdentifier = "keyboard.surface"
         surface.layer.cornerRadius = 20
@@ -276,6 +284,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         AukkhorSettings.refreshSharedSettings()
         if isViewLoaded {
             if lastAppearanceSignature != KeyboardPreferences.renderingSignature {
@@ -288,6 +297,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         // Reuse the canvas installed by buildKeys instead of restarting its
         // material animations every time the host presents the keyboard.
         if !isPreview, hasFullAccess { ScreenshotClipboard.shared.start() }
@@ -849,6 +859,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func startTouchDebugger() {
         clearTouchDebugger()
         touchDebuggerRunning = true
+        debugStartMovementCount = interactionHost.movementRecoveryCount
         rootTouchMonitor.onTouchBegan = { [weak self] touch in
             self?.observeRootTouch(touch)
         }
@@ -908,6 +919,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let maxInsert = debugProxyTimes.max() ?? 0
         let slowInserts = debugProxyTimes.filter { $0 > 30 }.count
         let gapHits = touchSamples.filter(\.usedGapRouting).count
+        let recoveredMoves = max(0, interactionHost.movementRecoveryCount - debugStartMovementCount)
         let rootLetterTouches = rootTouchSamples.filter { $0.keyCandidate != nil }
         let rootSequence = rootLetterTouches.compactMap(\.keyCandidate).joined()
         let rootOnlyEstimate = max(0, rootLetterTouches.count - observed.count)
@@ -932,6 +944,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Estimated root letter touches not routed: \(rootOnlyEstimate)
         Max root touch delivery delay: \(maxRootDelivery) ms
         Gap-rescued touches: \(gapHits)
+        Finger-roll letters recovered: \(recoveredMoves)
         Touches delivered to router: \(touchSamples.count)
         Proxy insert calls: \(debugProxyInsertions.count)
         Host text growth: \(hostGrowth) characters (best effort)
@@ -1053,6 +1066,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         touchDebugOverlay = nil
         touchSamples.removeAll()
         rootTouchSamples.removeAll()
+        debugStartMovementCount = 0
         debugProxyInsertions.removeAll()
         debugProxyTimes.removeAll()
         debugInitialContextLength = nil

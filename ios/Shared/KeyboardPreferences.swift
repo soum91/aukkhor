@@ -519,6 +519,7 @@ final class KeyboardInteractionView: UIView {
     private var trackedKeys: [ObjectIdentifier: KeyboardButton] = [:]
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
+    private(set) var movementRecoveryCount = 0
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let modalOverlay {
@@ -591,6 +592,33 @@ final class KeyboardInteractionView: UIView {
         key.sendActions(for: cancelled ? .touchCancel : (within ? .touchUpInside : .touchUpOutside))
     }
 
+    // Fast typing often includes short finger rolls rather than a clean lift
+    // between every neighboring key. Route those movements to the next letter
+    // instead of cancelling the entire touch when it leaves the first cap.
+    // Only a new key's inner bounds can trigger another letter, so expanded
+    // overlapping hit areas never turn a tiny finger wobble into a duplicate.
+    @discardableResult
+    func transitionDirectKey(from current: KeyboardButton?, to point: CGPoint,
+                             event: UIEvent? = nil) -> KeyboardButton? {
+        guard directTouchRoutingEnabled else { return current }
+        if let current {
+            let localPoint = current.convert(point, from: self)
+            if current.bounds.insetBy(dx: -2, dy: -2).contains(localPoint) { return current }
+        }
+        guard let candidate = resolvedHit(at: point, with: event) as? KeyboardButton,
+              candidate.insertsOnTouchDown, candidate !== current,
+              let label = candidate.accessibilityLabel,
+              label.count == 1, label.first?.isLetter == true else { return current }
+        let inside = candidate.convert(point, from: self)
+        guard candidate.bounds.insetBy(dx: 2, dy: 2).contains(inside) else { return current }
+        if let current { endDirectKey(current, at: point, cancelled: true) }
+        candidate.isHighlighted = true
+        candidate.sendActions(for: .touchDown)
+        routedTouchCount += 1
+        movementRecoveryCount += 1
+        return candidate
+    }
+
     func cancelActiveTouches() {
         for key in trackedKeys.values {
             key.isHighlighted = false
@@ -623,12 +651,14 @@ final class KeyboardInteractionView: UIView {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
             let id = ObjectIdentifier(touch)
-            guard let key = trackedKeys[id] else { continue }
             let position = touch.location(in: self)
-            if !key.point(inside: key.convert(position, from: self), with: event) {
-                endDirectKey(key, at: position, cancelled: true)
-                trackedKeys.removeValue(forKey: id)
+            let current = trackedKeys[id]
+            if let next = transitionDirectKey(from: current, to: position, event: event) {
+                trackedKeys[id] = next
             }
+            // Preserve a key that has already inserted its letter when a
+            // finger briefly travels through the gap. Release on lift; a
+            // later movement into another key's center can still be rescued.
         }
     }
 

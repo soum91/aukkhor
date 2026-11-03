@@ -236,6 +236,47 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(host.hitTest(point, with: nil) === space)
         XCTAssertNil(host.beginDirectKey(at: point), "The caret long press must stay on Space")
     }
+    func testFingerRolloverRecoversNeighboringLettersWithoutRepeatOrGapNoise() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        host.touchExpansion = 10
+        var inserted: [String] = []
+        let q = KeyboardButton(type: .custom)
+        q.accessibilityLabel = "q"
+        q.insertsOnTouchDown = true
+        q.frame = CGRect(x: 20, y: 20, width: 45, height: 45)
+        q.addAction(UIAction { _ in inserted.append("q") }, for: .touchDown)
+        host.addSubview(q)
+        let w = KeyboardButton(type: .custom)
+        w.accessibilityLabel = "w"
+        w.insertsOnTouchDown = true
+        w.frame = CGRect(x: 73, y: 20, width: 45, height: 45)
+        w.addAction(UIAction { _ in inserted.append("w") }, for: .touchDown)
+        host.addSubview(w)
+
+        let qCenter = CGPoint(x: 42, y: 42)
+        let wCenter = CGPoint(x: 95, y: 42)
+        let initial = host.beginDirectKey(at: qCenter)
+        XCTAssertTrue(initial === q)
+        XCTAssertTrue(host.transitionDirectKey(from: initial,
+                                               to: CGPoint(x: 67, y: 42)) === q,
+                      "Overlapping expansion regions must not add extra letters")
+        XCTAssertEqual(inserted, ["q"])
+        let next = host.transitionDirectKey(from: initial, to: wCenter)
+        XCTAssertTrue(next === w, "Rolling directly into the next letter must be rescued")
+        XCTAssertTrue(host.transitionDirectKey(from: next, to: wCenter) === w)
+        XCTAssertEqual(inserted, ["q", "w"])
+        XCTAssertEqual(host.movementRecoveryCount, 1)
+        if let next { host.endDirectKey(next, at: wCenter) }
+        XCTAssertEqual(inserted, ["q", "w"], "Lifting must never insert twice")
+    }
+
+    func testKeyboardRequestsPublicEdgeGestureDeferral() {
+        let (keyboard, _) = keyboard()
+        XCTAssertEqual(keyboard.preferredScreenEdgesDeferringSystemGestures,
+                       [.left, .right])
+    }
+
     func testInputRootRoutesKeysAheadOfDecorativeHitTargets() {
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 240, height: 160),
                                      inputViewStyle: .default)
