@@ -413,11 +413,11 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
             "Keep sensitivity accessible in the existing expanded gear panel")
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
-            .first { $0.accessibilityLabel == "Touch debugger" },
-            "The blocked app-launch gear should offer an in-keyboard debugger")
+            .first { $0.accessibilityLabel == "Open Aukkhor app" },
+            "Keep the left gear wired to the containing app deep link")
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
             .first { $0.accessibilityLabel == "Keyboard settings" },
-            "Keep the right gear for existing keyboard settings")
+            "Keep the right gear for existing settings and a long-press debugger")
         keyboard.toggleAppearancePanel()
         for label in ["q", "a", "z", "Space", "return"] {
             let key = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? KeyboardButton }
