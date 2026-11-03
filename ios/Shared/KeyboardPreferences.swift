@@ -520,6 +520,7 @@ final class KeyboardInteractionView: UIView {
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
     private(set) var movementRecoveryCount = 0
+    private(set) var earlyRootRoutedCount = 0
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let modalOverlay {
@@ -586,6 +587,20 @@ final class KeyboardInteractionView: UIView {
         return key
     }
 
+    // An ancestor receives touches before UIKit necessarily dispatches them to
+    // the keyboard view. Claim that same touch here to avoid the ~150ms delay
+    // seen between root observation and letter delivery on edge keys. The
+    // later UIKit touchesBegan reuses the tracked key and cannot insert twice.
+    @discardableResult
+    func beginTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
+                               early: Bool = false, event: UIEvent? = nil) -> KeyboardButton? {
+        if let existing = trackedKeys[touchID] { return existing }
+        guard let key = beginDirectKey(at: point, event: event) else { return nil }
+        trackedKeys[touchID] = key
+        if early { earlyRootRoutedCount += 1 }
+        return key
+    }
+
     func endDirectKey(_ key: KeyboardButton, at point: CGPoint, cancelled: Bool = false) {
         key.isHighlighted = false
         let within = key.point(inside: key.convert(point, from: self), with: nil)
@@ -633,10 +648,8 @@ final class KeyboardInteractionView: UIView {
             let tracing = onTouchDiagnostic != nil
             let started = tracing ? ProcessInfo.processInfo.systemUptime : 0
             let initiallyHit = tracing ? super.hitTest(position, with: event) : nil
-            let key = beginDirectKey(at: position, event: event)
-            if let key {
-                trackedKeys[ObjectIdentifier(touch)] = key
-            }
+            let key = beginTrackedDirectKey(for: ObjectIdentifier(touch),
+                                            at: position, event: event)
             if let observer = onTouchDiagnostic {
                 let finished = ProcessInfo.processInfo.systemUptime
                 let deliveryMs = Int(max(0, min(10_000, (started - touch.timestamp) * 1_000)))
@@ -677,9 +690,9 @@ final class KeyboardInteractionView: UIView {
     }
 }
 
-// Disabled outside an explicitly requested touch-debug session. Observes
-// touches at the keyboard root even when a descendant receives the touch,
-// without recognizing a gesture or cancelling a control's own touch events.
+// Observes touch-downs at the root without taking over UIKit's touch stream.
+// In live keyboards it routes character touches early. Only opt-in debugging
+// records sample details; no keystroke history is retained during normal use.
 final class KeyboardRootTouchMonitor: UIGestureRecognizer {
     var onTouchBegan: ((UITouch) -> Void)?
 

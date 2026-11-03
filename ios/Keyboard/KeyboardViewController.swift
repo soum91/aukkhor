@@ -68,11 +68,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let speech = AVSpeechSynthesizer()
     private let surface = UIView()
     private let backgroundImageView = UIImageView()
-    // iOS 26+ routes haptics through the view's scene. A generator constructed
-    // without a view can be silently ignored by the remote keyboard process.
+    // Associate feedback with the live interactive keyboard scene (iOS 26+).
+    // A long-lived generator avoids reallocating the Taptic Engine per key.
     private lazy var impact: UIImpactFeedbackGenerator = {
         if #available(iOS 26.0, *) {
-            return UIImpactFeedbackGenerator(style: .light, view: surface)
+            return UIImpactFeedbackGenerator(style: .light, view: interactionHost)
         }
         return UIImpactFeedbackGenerator(style: .light)
     }()
@@ -95,6 +95,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var touchSamples: [KeyboardTouchSample] = []
     private var rootTouchSamples: [KeyboardRootTouchSample] = []
     private var debugStartMovementCount = 0
+    private var debugStartEarlyRoutedCount = 0
     private var debugProxyInsertions: [String] = []
     private var debugProxyTimes: [Int] = []
     private var debugInitialContextLength: Int?
@@ -211,6 +212,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         surface.addSubview(interactionHost)
         (view as? KeyboardInputView)?.keyRoutingView = interactionHost
         view.addGestureRecognizer(rootTouchMonitor)
+        // UIKit can defer delivery to the descendant for a fraction of a
+        // second, even after the root sees a key touch. Route at the earliest
+        // public callback while leaving native controls and touch-up intact.
+        rootTouchMonitor.onTouchBegan = { [weak self] touch in
+            self?.handleRootTouchDown(touch)
+        }
+        rootTouchMonitor.isEnabled = !isPreview
         NSLayoutConstraint.activate([
             glassBackdrop.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
@@ -285,6 +293,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+        rootTouchMonitor.isEnabled = !isPreview || touchDebuggerRunning
         AukkhorSettings.refreshSharedSettings()
         if isViewLoaded {
             if lastAppearanceSignature != KeyboardPreferences.renderingSignature {
@@ -306,6 +315,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         clearTouchDebugger()
+        rootTouchMonitor.isEnabled = false
         interactionHost.cancelActiveTouches()
         stopDelete()
         spaceTouchResult = nil
@@ -335,7 +345,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func feedback() {
         if typingOptions.haptics {
-            impact.impactOccurred(intensity: 0.8)
+            impact.impactOccurred(intensity: 0.85)
+            // Apple recommends preparing again after every pulse when more
+            // feedback is likely. Reusing the generator without re-arming it
+            // caused later keystrokes to lose their tactile response.
+            impact.prepare()
         }
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
@@ -831,6 +845,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         else { startTouchDebugger() }
     }
 
+    private func handleRootTouchDown(_ touch: UITouch) {
+        // The root hit-test returns interactionHost for direct letter keys.
+        // Do not intercept Space, settings, keyboard switching, or overlays.
+        if touch.view === interactionHost, interactionHost.directTouchRoutingEnabled {
+            let position = touch.location(in: interactionHost)
+            interactionHost.beginTrackedDirectKey(
+                for: ObjectIdentifier(touch), at: position, early: true)
+        }
+        observeRootTouch(touch)
+    }
+
     private func observeRootTouch(_ touch: UITouch) {
         guard touchDebuggerRunning else { return }
         let point = touch.location(in: interactionHost)
@@ -860,9 +885,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         clearTouchDebugger()
         touchDebuggerRunning = true
         debugStartMovementCount = interactionHost.movementRecoveryCount
-        rootTouchMonitor.onTouchBegan = { [weak self] touch in
-            self?.observeRootTouch(touch)
-        }
+        debugStartEarlyRoutedCount = interactionHost.earlyRootRoutedCount
         rootTouchMonitor.isEnabled = true
         debugInitialContextLength = textDocumentProxy.documentContextBeforeInput?.count
         let liveMaterial = KeyboardPreferences.glassEnabled &&
@@ -885,8 +908,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func finishTouchDebugger() {
         touchDebuggerRunning = false
-        rootTouchMonitor.isEnabled = false
-        rootTouchMonitor.onTouchBegan = nil
+        rootTouchMonitor.isEnabled = !isPreview
         interactionHost.onTouchDiagnostic = nil
         lastTouchDebugReport = touchDebugReport()
         showTouchDebugReport(lastTouchDebugReport)
@@ -920,6 +942,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let slowInserts = debugProxyTimes.filter { $0 > 30 }.count
         let gapHits = touchSamples.filter(\.usedGapRouting).count
         let recoveredMoves = max(0, interactionHost.movementRecoveryCount - debugStartMovementCount)
+        let earlyRouted = max(0, interactionHost.earlyRootRoutedCount - debugStartEarlyRoutedCount)
         let rootLetterTouches = rootTouchSamples.filter { $0.keyCandidate != nil }
         let rootSequence = rootLetterTouches.compactMap(\.keyCandidate).joined()
         let rootOnlyEstimate = max(0, rootLetterTouches.count - observed.count)
@@ -945,6 +968,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Max root touch delivery delay: \(maxRootDelivery) ms
         Gap-rescued touches: \(gapHits)
         Finger-roll letters recovered: \(recoveredMoves)
+        Root-early-routed key presses: \(earlyRouted)
         Touches delivered to router: \(touchSamples.count)
         Proxy insert calls: \(debugProxyInsertions.count)
         Host text growth: \(hostGrowth) characters (best effort)
@@ -1058,8 +1082,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func clearTouchDebugger() {
         touchDebuggerRunning = false
-        rootTouchMonitor.isEnabled = false
-        rootTouchMonitor.onTouchBegan = nil
+        rootTouchMonitor.isEnabled = !isPreview
         interactionHost.onTouchDiagnostic = nil
         interactionHost.modalOverlay = nil
         touchDebugOverlay?.removeFromSuperview()
@@ -1067,6 +1090,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         touchSamples.removeAll()
         rootTouchSamples.removeAll()
         debugStartMovementCount = 0
+        debugStartEarlyRoutedCount = 0
         debugProxyInsertions.removeAll()
         debugProxyTimes.removeAll()
         debugInitialContextLength = nil
@@ -1086,6 +1110,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stack.addArrangedSubview(row([
             (AukkhorSettings.keyboardClipboardEnabled ? "Windows tools: On" : "Windows tools: Off", { [weak self] in
                 AukkhorSettings.keyboardClipboardEnabled.toggle(); self?.buildKeys()
+            }),
+            (KeyboardPreferences.haptics ? "Taptic: On" : "Taptic: Off", { [weak self] in
+                KeyboardPreferences.haptics.toggle()
+                self?.buildKeys()
+                if KeyboardPreferences.haptics { self?.impact.prepare() }
             })
         ]))
         stack.addArrangedSubview(row([

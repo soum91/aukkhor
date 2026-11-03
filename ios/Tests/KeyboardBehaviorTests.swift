@@ -224,6 +224,25 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
                       "The user must be able to restore the previous UIControl route")
         XCTAssertNil(host.beginDirectKey(at: nearEdge))
     }
+    func testEarlyRootRoutingDeduplicatesTheSameTouch() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 180, height: 100))
+        host.directTouchRoutingEnabled = true
+        let key = KeyboardButton(type: .custom)
+        key.frame = CGRect(x: 30, y: 20, width: 50, height: 45)
+        key.accessibilityLabel = "p"
+        key.insertsOnTouchDown = true
+        host.addSubview(key)
+        var inserted = 0
+        key.addAction(UIAction { _ in inserted += 1 }, for: .touchDown)
+        let id = ObjectIdentifier(NSObject())
+        let point = CGPoint(x: 50, y: 40)
+        XCTAssertTrue(host.beginTrackedDirectKey(for: id, at: point, early: true) === key)
+        XCTAssertTrue(host.beginTrackedDirectKey(for: id, at: point) === key)
+        XCTAssertEqual(inserted, 1, "Root and UIKit callbacks must insert only once")
+        XCTAssertEqual(host.receivedTouchCount, 1)
+        XCTAssertEqual(host.earlyRootRoutedCount, 1)
+    }
+
     func testDirectTouchRoutingKeepsSpaceNativeForCaretLongPress() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 250, height: 100))
         host.directTouchRoutingEnabled = true
