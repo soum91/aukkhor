@@ -236,6 +236,41 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(host.hitTest(point, with: nil) === space)
         XCTAssertNil(host.beginDirectKey(at: point), "The caret long press must stay on Space")
     }
+    func testInputRootRoutesKeysAheadOfDecorativeHitTargets() {
+        let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: 240, height: 160),
+                                     inputViewStyle: .default)
+        let router = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 120))
+        router.directTouchRoutingEnabled = true
+        let key = KeyboardButton(type: .custom)
+        key.accessibilityLabel = "q"
+        key.insertsOnTouchDown = true
+        key.frame = CGRect(x: 30, y: 25, width: 48, height: 44)
+        router.addSubview(key)
+        root.addSubview(router)
+        // Simulate a material/backdrop layer becoming hittable above the keys.
+        let decoration = UIView(frame: root.bounds)
+        root.addSubview(decoration)
+        root.keyRoutingView = router
+        XCTAssertTrue(root.hitTest(CGPoint(x: 50, y: 46), with: nil) === router,
+                      "Root hit testing must always return the direct key router")
+        XCTAssertTrue(root.hitTest(CGPoint(x: 50, y: 140), with: nil) === decoration,
+                      "Root must not steal touches outside the keyboard router")
+    }
+
+    func testRootTouchProbeIsDisabledExceptDuringManualDebugger() {
+        let (keyboard, _) = keyboard()
+        let monitor = keyboard.view.gestureRecognizers?.first { $0 is KeyboardRootTouchMonitor }
+        XCTAssertNotNil(monitor)
+        XCTAssertFalse(monitor?.isEnabled ?? true,
+                       "Normal typing must not attach an active touch logger")
+        keyboard.testingToggleTouchDebugger()
+        XCTAssertTrue(monitor?.isEnabled == true)
+        keyboard.testingToggleTouchDebugger()
+        XCTAssertFalse(monitor?.isEnabled ?? true)
+        keyboard.testingToggleTouchDebugger()
+        XCTAssertFalse(monitor?.isEnabled ?? true)
+    }
+
     func testOptInTouchDebuggerShowsLocalReportWithoutResizingKeyboard() throws {
         let (keyboard, _) = keyboard()
         let originalHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
