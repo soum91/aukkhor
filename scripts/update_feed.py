@@ -41,9 +41,9 @@ def update(version: str, build_number: str, ipa: Path) -> None:
     }
     if data.get("apps"):
         app["versions"] = data["apps"][0].get("versions", [])
-    marketing_version = version[:-(len(build_number) + 1)] if version.endswith("." + build_number) else version
+    # Keep each build unique for feed consumers that compare only the version string.
     entry = {
-        "version": marketing_version,
+        "version": version,
         "buildVersion": build_number,
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "localizedDescription": CHANGES,

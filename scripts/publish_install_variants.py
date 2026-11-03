@@ -59,7 +59,7 @@ def main():
     parser.add_argument("--mode", required=True, choices=("release", "direct"))
     args = parser.parse_args()
     version = f"0.2.0.{args.build}"
-    marketing_version = "0.2.0"
+    # Feed versions must distinguish builds; IPA Info.plist keeps its own marketing version.
     inspect(args.directory / IPA)
     prefix = (
         f"https://github.com/soum91/aukkhor/releases/download/v{version}"
@@ -83,7 +83,7 @@ def main():
         main_app["subtitle"] = "iPhone keyboard · " + version
         main_app["localizedDescription"] = note
         main_app["versions"] = [{
-            "version": marketing_version,
+            "version": version,
             "buildVersion": str(args.build),
             "date": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "localizedDescription": note,
