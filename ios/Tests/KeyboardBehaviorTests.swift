@@ -30,7 +30,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     private let keys = ["keyboardAutocorrect", "keyboardTextReplacement", "keyboardSuggestions",
                         "keyboardDoubleSpace", "keyboardPreset", "keyboardKeycapStyle",
                         "keyboardSeamlessBackground", "keyboardNumberRow", "keyboardTouchExpansion",
-                        "keyboardDirectTouchRouting"]
+                        "keyboardDirectTouchRouting", "keyboardHaptics", "keyboardHapticMode"]
     override func setUp() {
         super.setUp()
         for key in keys { saved[key] = AukkhorSettings.defaults.object(forKey: key) }
@@ -193,6 +193,17 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         KeyboardPreferences.increaseTouchExpansion()
         XCTAssertEqual(KeyboardPreferences.touchExpansion, 14)
     }
+    func testHapticModeSwitchPreservesAukkhorSettings() {
+        KeyboardPreferences.hapticMode = .impact
+        XCTAssertEqual(KeyboardPreferences.hapticMode.title, "Light")
+        KeyboardPreferences.hapticMode = KeyboardPreferences.hapticMode.next
+        XCTAssertEqual(KeyboardPreferences.hapticMode, .selection)
+        KeyboardPreferences.hapticMode = KeyboardPreferences.hapticMode.next
+        XCTAssertEqual(KeyboardPreferences.hapticMode, .vibration)
+        KeyboardPreferences.hapticMode = KeyboardPreferences.hapticMode.next
+        XCTAssertEqual(KeyboardPreferences.hapticMode, .impact)
+    }
+
     func testDirectTouchRoutingInsertsOnContactOnceAndSupportsSensitivity() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
         host.directTouchRoutingEnabled = true

@@ -29,6 +29,22 @@ enum KeyboardPreset: String, CaseIterable, Identifiable {
     }
 }
 
+enum KeyboardHapticMode: Int, CaseIterable {
+    case impact, selection, vibration
+
+    var title: String {
+        switch self {
+        case .impact: return "Light"
+        case .selection: return "Selection"
+        case .vibration: return "Vibrate"
+        }
+    }
+
+    var next: KeyboardHapticMode {
+        KeyboardHapticMode(rawValue: (rawValue + 1) % Self.allCases.count) ?? .impact
+    }
+}
+
 enum KeyboardPreferences {
     private static var data: UserDefaults { AukkhorSettings.defaults }
     static var renderingSignature: String {
@@ -151,6 +167,10 @@ enum KeyboardPreferences {
     static var haptics: Bool {
         get { data.object(forKey: "keyboardHaptics") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardHaptics") }
+    }
+    static var hapticMode: KeyboardHapticMode {
+        get { KeyboardHapticMode(rawValue: data.integer(forKey: "keyboardHapticMode")) ?? .impact }
+        set { data.set(newValue.rawValue, forKey: "keyboardHapticMode") }
     }
     static var keycapStyle: Int {
         get { data.object(forKey: "keyboardKeycapStyle") as? Int ?? 0 }

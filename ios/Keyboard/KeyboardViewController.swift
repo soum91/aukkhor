@@ -1,6 +1,7 @@
 import UIKit
 import AVFoundation
 import Photos
+import AudioToolbox
 
 private enum InputMode: Int, CaseIterable {
     case english, phonetic, bangla
@@ -11,6 +12,7 @@ private enum InputMode: Int, CaseIterable {
 
 private struct TypingOptions {
     let haptics = KeyboardPreferences.haptics
+    let hapticMode = KeyboardPreferences.hapticMode
     let sounds = KeyboardPreferences.keySounds
     let suggestions = KeyboardPreferences.suggestions
     let doubleSpace = KeyboardPreferences.doubleSpacePeriod
@@ -77,6 +79,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         return UIImpactFeedbackGenerator(style: .light)
     }()
     private var typingOptions = TypingOptions()
+    private lazy var selectionFeedback: UISelectionFeedbackGenerator = {
+        if #available(iOS 26.0, *) {
+            return UISelectionFeedbackGenerator(view: interactionHost)
+        }
+        return UISelectionFeedbackGenerator()
+    }()
+    private var lastVibrationAt: TimeInterval = -1_000
+    private var debugHapticRequests = 0
+    private var debugVibrationRequests = 0
     private var lastAppearanceSignature: String?
     private var candidateButtons: [UIButton] = []
     private var candidateValues = [String](repeating: "", count: 3)
@@ -188,7 +199,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             surface.topAnchor.constraint(equalTo: view.topAnchor),
             surface.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
-        impact.prepare()
+        prepareHaptic()
         surface.backgroundColor = palette.background
         backgroundImageView.contentMode = .scaleAspectFill
         backgroundImageView.clipsToBounds = true
@@ -300,7 +311,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 oneHandSide = KeyboardPreferences.oneHandSide
                 buildKeys()
             }
-            impact.prepare()
+            prepareHaptic()
         }
     }
 
@@ -343,14 +354,41 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         refreshSuggestions()
     }
 
-    private func feedback() {
-        if typingOptions.haptics {
-            impact.impactOccurred(intensity: 0.85)
-            // Apple recommends preparing again after every pulse when more
-            // feedback is likely. Reusing the generator without re-arming it
-            // caused later keystrokes to lose their tactile response.
-            impact.prepare()
+    private func prepareHaptic() {
+        guard typingOptions.haptics else { return }
+        switch typingOptions.hapticMode {
+        case .impact: impact.prepare()
+        case .selection: selectionFeedback.prepare()
+        case .vibration: break
         }
+    }
+
+    // A keyboard extension can request UIKit feedback even when iOS declines
+    // to play it. Offer an explicit, documented vibration alternative without
+    // automatically replacing a subtle click with a full-strength alert.
+    private func triggerHaptic(force: Bool = false) {
+        guard force || typingOptions.haptics else { return }
+        if touchDebuggerRunning { debugHapticRequests += 1 }
+        switch typingOptions.hapticMode {
+        case .impact:
+            impact.impactOccurred(intensity: 0.85)
+            impact.prepare()
+        case .selection:
+            selectionFeedback.selectionChanged()
+            selectionFeedback.prepare()
+        case .vibration:
+            let now = ProcessInfo.processInfo.systemUptime
+            // Alert vibration lasts longer than a Taptic tap; do not stack
+            // overlapping vibration requests during fast typing.
+            guard now - lastVibrationAt >= 0.18 else { return }
+            lastVibrationAt = now
+            if touchDebuggerRunning { debugVibrationRequests += 1 }
+            AudioServicesPlayAlertSound(kSystemSoundID_Vibrate)
+        }
+    }
+
+    private func feedback() {
+        triggerHaptic()
         if typingOptions.sounds { UIDevice.current.playInputClick() }
     }
 
@@ -886,6 +924,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         touchDebuggerRunning = true
         debugStartMovementCount = interactionHost.movementRecoveryCount
         debugStartEarlyRoutedCount = interactionHost.earlyRootRoutedCount
+        debugHapticRequests = 0
+        debugVibrationRequests = 0
         rootTouchMonitor.isEnabled = true
         debugInitialContextLength = textDocumentProxy.documentContextBeforeInput?.count
         let liveMaterial = KeyboardPreferences.glassEnabled &&
@@ -969,6 +1009,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Gap-rescued touches: \(gapHits)
         Finger-roll letters recovered: \(recoveredMoves)
         Root-early-routed key presses: \(earlyRouted)
+        Haptic enabled: \(typingOptions.haptics ? "yes" : "no")
+        Haptic mode: \(typingOptions.hapticMode.title)
+        Haptic requests issued: \(debugHapticRequests)
+        Vibration fallback requests: \(debugVibrationRequests)
         Touches delivered to router: \(touchSamples.count)
         Proxy insert calls: \(debugProxyInsertions.count)
         Host text growth: \(hostGrowth) characters (best effort)
@@ -1091,6 +1135,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         rootTouchSamples.removeAll()
         debugStartMovementCount = 0
         debugStartEarlyRoutedCount = 0
+        debugHapticRequests = 0
+        debugVibrationRequests = 0
         debugProxyInsertions.removeAll()
         debugProxyTimes.removeAll()
         debugInitialContextLength = nil
@@ -1114,7 +1160,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             (KeyboardPreferences.haptics ? "Taptic: On" : "Taptic: Off", { [weak self] in
                 KeyboardPreferences.haptics.toggle()
                 self?.buildKeys()
-                if KeyboardPreferences.haptics { self?.impact.prepare() }
+                self?.prepareHaptic()
+            })
+        ]))
+        stack.addArrangedSubview(row([
+            ("Feedback: " + KeyboardPreferences.hapticMode.title, { [weak self] in
+                KeyboardPreferences.hapticMode = KeyboardPreferences.hapticMode.next
+                self?.buildKeys()
+                self?.prepareHaptic()
+            }),
+            ("Test feedback", { [weak self] in
+                self?.triggerHaptic(force: true)
             })
         ]))
         stack.addArrangedSubview(row([
