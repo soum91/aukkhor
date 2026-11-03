@@ -17,6 +17,16 @@ private struct TypingOptions {
     let glide = KeyboardPreferences.experimentalGlide
 }
 
+// The user explicitly starts this trace. Keep only the touch locations/key
+// labels of a short test session in memory, never persistent keystroke logs.
+private struct KeyboardTouchSample {
+    let key: String?
+    let position: CGPoint
+    let deliveryMs: Int
+    let actionMs: Int
+    let usedGapRouting: Bool
+}
+
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback, UIGestureRecognizerDelegate {
     var isPreview = false
     var previewNeedsInputModeSwitchKey = false
@@ -72,6 +82,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var spaceTouchResult: SpaceTouchResult?
     private var pendingReplacement: (original: String, inserted: String, document: UUID)?
     private var suppressedReplacement: String?
+    private var touchDebuggerRunning = false
+    private var touchSamples: [KeyboardTouchSample] = []
+    private var debugProxyInsertions: [String] = []
+    private var debugProxyTimes: [Int] = []
+    private var debugInitialContextLength: Int?
+    private var debugCanvasDescription = ""
+    private var touchDebugOverlay: UIView?
+    private var lastTouchDebugReport = ""
     #if DEBUG
     var testingProxy: UITextDocumentProxy?
     var testingAllowTouchEvents = false
@@ -88,6 +106,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
     func testingFormatSelection(_ action: String) { if let action = SelectionFormat(rawValue: action) { formatSelection(action) } }
+    func testingToggleTouchDebugger() { toggleTouchDebugger() }
+    var testingTouchDebugOverlay: UIView? { touchDebugOverlay }
     #endif
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
@@ -255,6 +275,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        clearTouchDebugger()
         interactionHost.cancelActiveTouches()
         stopDelete()
         spaceTouchResult = nil
@@ -551,7 +572,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            ("⚙", { [weak self] in self?.openContainingApp() }),
+            ("⚙", { [weak self] in self?.toggleTouchDebugger() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
@@ -563,7 +584,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         ]
         for (title, action) in controls {
             let button = makeButton(title, action: action)
-            if title == "⚙" { button.accessibilityLabel = "Open Aukkhor app" }
+            if title == "⚙" {
+                button.accessibilityLabel = "Touch debugger"
+                button.accessibilityHint = "Start or finish a local touch diagnostic session"
+            }
             button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 11 : 20)
             button.heightAnchor.constraint(equalToConstant: 34).isActive = true
             tools.addArrangedSubview(button)
@@ -627,9 +651,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         })
         hand.showsMenuAsPrimaryAction = true
         strip.addArrangedSubview(hand)
-        strip.addArrangedSubview(stripButton("⚙", action: { [weak self] in
+        let settingsGear = stripButton("⚙", action: { [weak self] in
             self?.toggleAppearancePanel()
-        }))
+        })
+        settingsGear.accessibilityLabel = "Keyboard settings"
+        let debugHold = UILongPressGestureRecognizer(target: self, action: #selector(holdForTouchDebugger(_:)))
+        debugHold.minimumPressDuration = 0.55
+        settingsGear.addGestureRecognizer(debugHold)
+        settingsGear.accessibilityHint = "Tap for settings or hold to run the touch debugger"
+        strip.addArrangedSubview(settingsGear)
         return strip
     }
 
@@ -760,20 +790,173 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         buildKeys()
     }
 
-    private func openContainingApp() {
-        guard let destination = URL(string: "aukkhor://settings"),
-              let context = extensionContext, !isPreview else {
-            show("Open Aukkhor from your Home Screen")
-            return
+    @objc private func holdForTouchDebugger(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began else { return }
+        toggleTouchDebugger()
+    }
+
+    private func toggleTouchDebugger() {
+        if touchDebugOverlay != nil { clearTouchDebugger(); return }
+        if touchDebuggerRunning { finishTouchDebugger() }
+        else { startTouchDebugger() }
+    }
+
+    private func startTouchDebugger() {
+        clearTouchDebugger()
+        touchDebuggerRunning = true
+        debugInitialContextLength = textDocumentProxy.documentContextBeforeInput?.count
+        let liveMaterial = KeyboardPreferences.glassEnabled &&
+            !KeyboardPreferences.usesSystemCanvas && !UIAccessibility.isReduceTransparencyEnabled
+        debugCanvasDescription = "\(KeyboardPreferences.preset.title), " +
+            (KeyboardPreferences.usesSystemCanvas ? "iOS canvas" : "custom canvas") +
+            ", live material \(liveMaterial ? "on" : "off"), " +
+            "direct \(interactionHost.directTouchRoutingEnabled ? "on" : "off"), " +
+            "touch \(Int(interactionHost.touchExpansion))pt"
+        interactionHost.onTouchDiagnostic = { [weak self] point, key, delivery, action, gap in
+            guard let self, self.touchDebuggerRunning else { return }
+            // Bound the ring; do not touch disk or read the host document here.
+            if self.touchSamples.count == 160 { self.touchSamples.removeFirst() }
+            self.touchSamples.append(KeyboardTouchSample(
+                key: key, position: point, deliveryMs: delivery,
+                actionMs: action, usedGapRouting: gap))
         }
-        // The public extension API can refuse this for keyboard extensions.
-        // Do not use UIApplication responder-chain workarounds or private APIs.
-        context.open(destination) { [weak self] opened in
-            guard !opened else { return }
-            DispatchQueue.main.async {
-                self?.show("iOS blocked opening Aukkhor. Open it from Home Screen.")
+        show("Touch DEBUG ON · type qwertyuiopasdfghjklzxcvbnm, then tap left gear")
+    }
+
+    private func finishTouchDebugger() {
+        touchDebuggerRunning = false
+        interactionHost.onTouchDiagnostic = nil
+        lastTouchDebugReport = touchDebugReport()
+        showTouchDebugReport(lastTouchDebugReport)
+    }
+
+    private func touchDebugReport() -> String {
+        let expected = Array("qwertyuiopasdfghjklzxcvbnm")
+        let observed = touchSamples.compactMap { $0.key?.lowercased() }
+            .filter { $0.count == 1 && $0.first?.isLetter == true }.joined()
+        let attempted = debugProxyInsertions.joined()
+        var missing: [Character] = []
+        var expectedIndex = 0
+        var isExpectedSubsequence = true
+        for character in observed {
+            guard let next = expected[expectedIndex...].firstIndex(of: character) else {
+                isExpectedSubsequence = false
+                break
             }
+            missing.append(contentsOf: expected[expectedIndex..<next])
+            expectedIndex = next + 1
         }
+        if isExpectedSubsequence { missing.append(contentsOf: expected[expectedIndex...]) }
+        let hostGrowth: String
+        if let start = debugInitialContextLength,
+           let end = textDocumentProxy.documentContextBeforeInput?.count {
+            hostGrowth = String(end - start)
+        } else { hostGrowth = "unavailable" }
+        let maxDelivery = touchSamples.map(\.deliveryMs).max() ?? 0
+        let maxAction = touchSamples.map(\.actionMs).max() ?? 0
+        let maxInsert = debugProxyTimes.max() ?? 0
+        let slowInserts = debugProxyTimes.filter { $0 > 30 }.count
+        let gapHits = touchSamples.filter(\.usedGapRouting).count
+        let recent = touchSamples.suffix(18).map { sample in
+            "\(sample.key ?? "?")@\(Int(sample.position.x)),\(Int(sample.position.y)):" +
+                "\(sample.deliveryMs)/\(sample.actionMs)ms"
+        }.joined(separator: " ")
+        return """
+        AUKKHOR TOUCH DEBUG (local session)
+        Only use non-sensitive test text. Nothing is uploaded or saved.
+
+        Theme: \(debugCanvasDescription)
+        Expected test: \(String(expected))
+        Touches delivered to router: \(touchSamples.count)
+        Gap-rescued touches: \(gapHits)
+        Proxy insert calls: \(debugProxyInsertions.count)
+        Host text growth: \(hostGrowth) characters (best effort)
+        Max touch delivery delay: \(maxDelivery) ms
+        Max key action time: \(maxAction) ms
+        Max proxy insertion time: \(maxInsert) ms
+        Slow insertions (>30 ms): \(slowInserts)
+
+        Key touch sequence: \(observed.isEmpty ? "(none)" : observed)
+        Proxy attempt sequence: \(attempted.isEmpty ? "(none)" : attempted)
+        Missing in expected test: \(isExpectedSubsequence ? (missing.isEmpty ? "none" : String(missing)) : "test order differs")
+
+        Recent key@x,y:delivery/action:
+        \(recent.isEmpty ? "(none)" : recent)
+        """
+    }
+
+    private func showTouchDebugReport(_ report: String) {
+        touchDebugOverlay?.removeFromSuperview()
+        let overlay = UIView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.accessibilityIdentifier = "keyboard.touchDebugOverlay"
+        overlay.backgroundColor = palette.background.withAlphaComponent(0.98)
+        overlay.layer.cornerRadius = 10
+        overlay.clipsToBounds = true
+        interactionHost.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: interactionHost.leadingAnchor, constant: 4),
+            overlay.trailingAnchor.constraint(equalTo: interactionHost.trailingAnchor, constant: -4),
+            overlay.topAnchor.constraint(equalTo: interactionHost.topAnchor, constant: 24),
+            overlay.bottomAnchor.constraint(equalTo: interactionHost.bottomAnchor, constant: -4)
+        ])
+        let column = UIStackView()
+        column.axis = .vertical
+        column.spacing = 6
+        column.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: overlay.leadingAnchor, constant: 8),
+            column.trailingAnchor.constraint(equalTo: overlay.trailingAnchor, constant: -8),
+            column.topAnchor.constraint(equalTo: overlay.topAnchor, constant: 6),
+            column.bottomAnchor.constraint(equalTo: overlay.bottomAnchor, constant: -6)
+        ])
+        let title = UILabel()
+        title.text = "Touch debugger · session only"
+        title.font = .systemFont(ofSize: 12, weight: .semibold)
+        title.textColor = palette.foreground
+        column.addArrangedSubview(title)
+        let detail = UITextView()
+        detail.accessibilityIdentifier = "keyboard.touchDebugReport"
+        detail.text = report
+        detail.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        detail.textColor = palette.foreground
+        detail.backgroundColor = .clear
+        detail.isEditable = false
+        detail.isScrollEnabled = true
+        detail.textContainerInset = .zero
+        column.addArrangedSubview(detail)
+        let actions = UIStackView()
+        actions.distribution = .fillEqually
+        actions.spacing = 8
+        let copy = UIButton(type: .system)
+        copy.setTitle("Copy report", for: .normal)
+        copy.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            UIPasteboard.general.string = self.lastTouchDebugReport
+            self.show("Touch report copied")
+        }, for: .touchUpInside)
+        let done = UIButton(type: .system)
+        done.setTitle("Done / clear", for: .normal)
+        done.addAction(UIAction { [weak self] _ in self?.clearTouchDebugger() }, for: .touchUpInside)
+        actions.addArrangedSubview(copy)
+        actions.addArrangedSubview(done)
+        actions.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        column.addArrangedSubview(actions)
+        touchDebugOverlay = overlay
+    }
+
+    private func clearTouchDebugger() {
+        touchDebuggerRunning = false
+        interactionHost.onTouchDiagnostic = nil
+        touchDebugOverlay?.removeFromSuperview()
+        touchDebugOverlay = nil
+        touchSamples.removeAll()
+        debugProxyInsertions.removeAll()
+        debugProxyTimes.removeAll()
+        debugInitialContextLength = nil
+        debugCanvasDescription = ""
+        lastTouchDebugReport = ""
     }
 
     private func buildAppearancePanel() {
@@ -1204,6 +1387,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         lastSpaceTap = .distantPast
     }
 
+    private func insertTypedText(_ value: String) {
+        guard touchDebuggerRunning else {
+            textDocumentProxy.insertText(value)
+            return
+        }
+        let started = ProcessInfo.processInfo.systemUptime
+        textDocumentProxy.insertText(value)
+        let elapsedMs = Int(max(0, min(10_000,
+            (ProcessInfo.processInfo.systemUptime - started) * 1_000)))
+        if debugProxyInsertions.count == 160 { debugProxyInsertions.removeFirst() }
+        if debugProxyTimes.count == 160 { debugProxyTimes.removeFirst() }
+        debugProxyInsertions.append(value)
+        debugProxyTimes.append(elapsedMs)
+    }
+
     private func type(_ value: String) {
         // A deliberate Shift tap followed by typing is not a Caps Lock double
         // tap, even if the user is fast enough to hit Shift again in 350ms.
@@ -1222,7 +1420,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             Date().timeIntervalSince(lastSpaceTap) < 0.45 &&
             (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(" ") {
             textDocumentProxy.deleteBackward()
-            textDocumentProxy.insertText(". ")
+            insertTypedText(". ")
             lastSpaceTap = .distantPast
             return
         }
@@ -1235,14 +1433,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             buffer += value
             let newText = PhoneticBangla.transliterate(buffer)
             for _ in renderedBuffer { textDocumentProxy.deleteBackward() }
-            textDocumentProxy.insertText(newText)
+            insertTypedText(newText)
             renderedBuffer = newText
         } else {
             if value == " " || value == "." || value == "," || value == "\n" || value == "!" || value == "?" {
                 applyTextReplacementIfNeeded(delimiter: value)
             }
             commitBuffer()
-            textDocumentProxy.insertText(value)
+            insertTypedText(value)
             if mode == .english && !symbols {
                 if value.count == 1 && value.first?.isLetter == true && shift && !capsLock {
                     shift = false

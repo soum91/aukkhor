@@ -236,6 +236,28 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(host.hitTest(point, with: nil) === space)
         XCTAssertNil(host.beginDirectKey(at: point), "The caret long press must stay on Space")
     }
+    func testOptInTouchDebuggerShowsLocalReportWithoutResizingKeyboard() throws {
+        let (keyboard, _) = keyboard()
+        let originalHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
+        keyboard.testingToggleTouchDebugger()
+        for letter in "qwerty" { keyboard.testingTypeCharacter(String(letter)) }
+        keyboard.testingToggleTouchDebugger()
+        let overlay = try XCTUnwrap(keyboard.testingTouchDebugOverlay)
+        XCTAssertEqual(overlay.accessibilityIdentifier, "keyboard.touchDebugOverlay")
+        func findText(_ parent: UIView) -> UITextView? {
+            if let text = parent as? UITextView { return text }
+            for child in parent.subviews {
+                if let text = findText(child) { return text }
+            }
+            return nil
+        }
+        let report = try XCTUnwrap(findText(overlay)?.text)
+        XCTAssertTrue(report.contains("Proxy insert calls: 6"))
+        XCTAssertTrue(report.contains("Proxy attempt sequence: qwerty"))
+        XCTAssertEqual(try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight, originalHeight)
+        keyboard.testingToggleTouchDebugger()
+        XCTAssertNil(keyboard.testingTouchDebugOverlay)
+    }
     func testSelectedTextCaseAndMarkdownFormattingNeverResizeKeyboard() throws {
         let (keyboard, proxy) = keyboard()
         let initialHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight
@@ -391,8 +413,11 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
             "Keep sensitivity accessible in the existing expanded gear panel")
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
-            .first { $0.accessibilityLabel == "Open Aukkhor app" },
-            "Keep the left-rail gear as the containing-app shortcut")
+            .first { $0.accessibilityLabel == "Touch debugger" },
+            "The blocked app-launch gear should offer an in-keyboard debugger")
+        XCTAssertNotNil(all.compactMap { $0 as? UIButton }
+            .first { $0.accessibilityLabel == "Keyboard settings" },
+            "Keep the right gear for existing keyboard settings")
         keyboard.toggleAppearancePanel()
         for label in ["q", "a", "z", "Space", "return"] {
             let key = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? KeyboardButton }

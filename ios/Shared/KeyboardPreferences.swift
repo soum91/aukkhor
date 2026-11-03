@@ -510,6 +510,9 @@ final class KeyboardPressLensView: UIView {
 final class KeyboardInteractionView: UIView {
     var touchExpansion: CGFloat = 10
     var directTouchRoutingEnabled = false
+    // Opt-in, memory-only diagnostics. No logging or extra hit testing while
+    // the debugger is off, and no key data is written to a shared container.
+    var onTouchDiagnostic: ((CGPoint, String?, Int, Int, Bool) -> Void)?
     private var trackedKeys: [ObjectIdentifier: KeyboardButton] = [:]
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
@@ -589,8 +592,21 @@ final class KeyboardInteractionView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            if let key = beginDirectKey(at: touch.location(in: self), event: event) {
+            let position = touch.location(in: self)
+            let tracing = onTouchDiagnostic != nil
+            let started = tracing ? ProcessInfo.processInfo.systemUptime : 0
+            let initiallyHit = tracing ? super.hitTest(position, with: event) : nil
+            let key = beginDirectKey(at: position, event: event)
+            if let key {
                 trackedKeys[ObjectIdentifier(touch)] = key
+            }
+            if let observer = onTouchDiagnostic {
+                let finished = ProcessInfo.processInfo.systemUptime
+                let deliveryMs = Int(max(0, min(10_000, (started - touch.timestamp) * 1_000)))
+                let actionMs = Int(max(0, min(10_000, (finished - started) * 1_000)))
+                let fromGap = key.map { initiallyHit !== $0 } ?? false
+                observer(position, key?.accessibilityLabel, deliveryMs, actionMs,
+                         fromGap)
             }
         }
     }
