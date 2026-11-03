@@ -27,6 +27,15 @@ private struct KeyboardTouchSample {
     let usedGapRouting: Bool
 }
 
+// The root probe sees touch-downs even when UIKit selects a different
+// descendant than KeyboardInteractionView. Kept only during manual debugging.
+private struct KeyboardRootTouchSample {
+    let keyCandidate: String?
+    let position: CGPoint
+    let receivingView: String
+    let deliveryMs: Int
+}
+
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback, UIGestureRecognizerDelegate {
     var isPreview = false
     var previewNeedsInputModeSwitchKey = false
@@ -84,6 +93,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var suppressedReplacement: String?
     private var touchDebuggerRunning = false
     private var touchSamples: [KeyboardTouchSample] = []
+    private var rootTouchSamples: [KeyboardRootTouchSample] = []
     private var debugProxyInsertions: [String] = []
     private var debugProxyTimes: [Int] = []
     private var debugInitialContextLength: Int?
@@ -117,6 +127,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // effectless UIVisualEffectView can still install private hit-test views
     // when UIKit moves a keyboard extension between remote host windows.
     private let interactionHost = KeyboardInteractionView()
+    private lazy var rootTouchMonitor: KeyboardRootTouchMonitor = {
+        let monitor = KeyboardRootTouchMonitor()
+        monitor.cancelsTouchesInView = false
+        monitor.delaysTouchesBegan = false
+        monitor.delaysTouchesEnded = false
+        monitor.isEnabled = false
+        return monitor
+    }()
     private lazy var glideRecognizer: UIPanGestureRecognizer = {
         let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleGlide(_:)))
         recognizer.cancelsTouchesInView = true
@@ -183,6 +201,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         interactionHost.isUserInteractionEnabled = true
         interactionHost.accessibilityIdentifier = "keyboard.interactionHost"
         surface.addSubview(interactionHost)
+        (view as? KeyboardInputView)?.keyRoutingView = interactionHost
+        view.addGestureRecognizer(rootTouchMonitor)
         NSLayoutConstraint.activate([
             glassBackdrop.leadingAnchor.constraint(equalTo: surface.leadingAnchor),
             glassBackdrop.trailingAnchor.constraint(equalTo: surface.trailingAnchor),
@@ -801,9 +821,38 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         else { startTouchDebugger() }
     }
 
+    private func observeRootTouch(_ touch: UITouch) {
+        guard touchDebuggerRunning else { return }
+        let point = touch.location(in: interactionHost)
+        let padding = interactionHost.touchExpansion
+        let candidate = letterButtons.first { button, _ in
+            let hitRect = button.convert(button.bounds.insetBy(dx: -padding, dy: -padding),
+                                         to: interactionHost)
+            return hitRect.contains(point)
+        }?.1
+        let receiver: String
+        if touch.view === interactionHost {
+            receiver = "router"
+        } else if let view = touch.view {
+            receiver = view.accessibilityIdentifier ?? String(describing: type(of: view))
+        } else {
+            receiver = "no view"
+        }
+        let delay = Int(max(0, min(10_000,
+            (ProcessInfo.processInfo.systemUptime - touch.timestamp) * 1_000)))
+        if rootTouchSamples.count == 160 { rootTouchSamples.removeFirst() }
+        rootTouchSamples.append(KeyboardRootTouchSample(
+            keyCandidate: candidate, position: point, receivingView: receiver,
+            deliveryMs: delay))
+    }
+
     private func startTouchDebugger() {
         clearTouchDebugger()
         touchDebuggerRunning = true
+        rootTouchMonitor.onTouchBegan = { [weak self] touch in
+            self?.observeRootTouch(touch)
+        }
+        rootTouchMonitor.isEnabled = true
         debugInitialContextLength = textDocumentProxy.documentContextBeforeInput?.count
         let liveMaterial = KeyboardPreferences.glassEnabled &&
             !KeyboardPreferences.usesSystemCanvas && !UIAccessibility.isReduceTransparencyEnabled
@@ -825,6 +874,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func finishTouchDebugger() {
         touchDebuggerRunning = false
+        rootTouchMonitor.isEnabled = false
+        rootTouchMonitor.onTouchBegan = nil
         interactionHost.onTouchDiagnostic = nil
         lastTouchDebugReport = touchDebugReport()
         showTouchDebugReport(lastTouchDebugReport)
@@ -857,6 +908,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let maxInsert = debugProxyTimes.max() ?? 0
         let slowInserts = debugProxyTimes.filter { $0 > 30 }.count
         let gapHits = touchSamples.filter(\.usedGapRouting).count
+        let rootLetterTouches = rootTouchSamples.filter { $0.keyCandidate != nil }
+        let rootSequence = rootLetterTouches.compactMap(\.keyCandidate).joined()
+        let rootOnlyEstimate = max(0, rootLetterTouches.count - observed.count)
+        let maxRootDelivery = rootTouchSamples.map(\.deliveryMs).max() ?? 0
+        let recentRoot = rootTouchSamples.suffix(20).map { sample in
+            "\(sample.keyCandidate ?? "?")@\(Int(sample.position.x)),\(Int(sample.position.y)):" +
+                "\(sample.receivingView)/\(sample.deliveryMs)ms"
+        }.joined(separator: " ")
         let recent = touchSamples.suffix(18).map { sample in
             "\(sample.key ?? "?")@\(Int(sample.position.x)),\(Int(sample.position.y)):" +
                 "\(sample.deliveryMs)/\(sample.actionMs)ms"
@@ -867,8 +926,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         Theme: \(debugCanvasDescription)
         Expected test: \(String(expected))
-        Touches delivered to router: \(touchSamples.count)
+        Root touch-downs seen: \(rootTouchSamples.count)
+        Root touches in letter area: \(rootLetterTouches.count)
+        Root letter candidate sequence: \(rootSequence.isEmpty ? "(none)" : rootSequence)
+        Estimated root letter touches not routed: \(rootOnlyEstimate)
+        Max root touch delivery delay: \(maxRootDelivery) ms
         Gap-rescued touches: \(gapHits)
+        Touches delivered to router: \(touchSamples.count)
         Proxy insert calls: \(debugProxyInsertions.count)
         Host text growth: \(hostGrowth) characters (best effort)
         Max touch delivery delay: \(maxDelivery) ms
@@ -882,6 +946,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         Recent key@x,y:delivery/action:
         \(recent.isEmpty ? "(none)" : recent)
+
+        Recent root key@x,y:recipient/delivery:
+        \(recentRoot.isEmpty ? "(none)" : recentRoot)
         """
     }
 
@@ -978,11 +1045,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func clearTouchDebugger() {
         touchDebuggerRunning = false
+        rootTouchMonitor.isEnabled = false
+        rootTouchMonitor.onTouchBegan = nil
         interactionHost.onTouchDiagnostic = nil
         interactionHost.modalOverlay = nil
         touchDebugOverlay?.removeFromSuperview()
         touchDebugOverlay = nil
         touchSamples.removeAll()
+        rootTouchSamples.removeAll()
         debugProxyInsertions.removeAll()
         debugProxyTimes.removeAll()
         debugInitialContextLength = nil
