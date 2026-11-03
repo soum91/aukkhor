@@ -225,6 +225,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         interactionHost.isUserInteractionEnabled = true
         // Essential for rapid alternating/multi-finger typing: the root
         // monitor sees every touch, and this view must receive them too.
+        // This is the iOS 27 touch-loss fix; keep Taptic feedback unchanged.
         interactionHost.isMultipleTouchEnabled = true
         interactionHost.accessibilityIdentifier = "keyboard.interactionHost"
         surface.addSubview(interactionHost)
