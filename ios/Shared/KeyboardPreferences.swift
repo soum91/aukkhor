@@ -510,6 +510,9 @@ final class KeyboardPressLensView: UIView {
 final class KeyboardInteractionView: UIView {
     var touchExpansion: CGFloat = 10
     var directTouchRoutingEnabled = false
+    // A diagnostic sheet is modal. Never route its button taps into letter
+    // keys beneath it, including when the finger lands close to an edge.
+    weak var modalOverlay: UIView?
     // Opt-in, memory-only diagnostics. No logging or extra hit testing while
     // the debugger is off, and no key data is written to a shared container.
     var onTouchDiagnostic: ((CGPoint, String?, Int, Int, Bool) -> Void)?
@@ -518,6 +521,12 @@ final class KeyboardInteractionView: UIView {
     private(set) var routedTouchCount = 0
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let modalOverlay {
+            let overlayPoint = modalOverlay.convert(point, from: self)
+            if modalOverlay.point(inside: overlayPoint, with: event) {
+                return modalOverlay.hitTest(overlayPoint, with: event)
+            }
+        }
         let target = resolvedHit(at: point, with: event)
         // Receive the finger on this lightweight view, and send the key's
         // touchDown synchronously. Avoid UIKit's UIControl tracking latency

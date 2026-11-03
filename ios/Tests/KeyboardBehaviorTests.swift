@@ -258,6 +258,41 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingToggleTouchDebugger()
         XCTAssertNil(keyboard.testingTouchDebugOverlay)
     }
+    func testTouchDebuggerCanInsertReportWithoutPasteboardAccess() throws {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingToggleTouchDebugger()
+        for letter in "qwerty" { keyboard.testingTypeCharacter(String(letter)) }
+        keyboard.testingToggleTouchDebugger()
+        let overlay = try XCTUnwrap(keyboard.testingTouchDebugOverlay)
+        func descendants(_ parent: UIView) -> [UIView] {
+            [parent] + parent.subviews.flatMap(descendants)
+        }
+        let insert = try XCTUnwrap(descendants(overlay).compactMap { $0 as? UIButton }
+            .first { $0.accessibilityIdentifier == "keyboard.touchDebugInsert" })
+        insert.sendActions(for: .touchUpInside)
+        XCTAssertTrue(proxy.text.contains("AUKKHOR TOUCH DEBUG (local session)"))
+        XCTAssertTrue(proxy.text.contains("Proxy attempt sequence: qwerty"))
+        let status = try XCTUnwrap(descendants(overlay).compactMap { $0 as? UILabel }
+            .first { $0.accessibilityIdentifier == "keyboard.touchDebugStatus" })
+        XCTAssertTrue(status.text?.contains("Inserted in the current text field") == true)
+        XCTAssertNotNil(descendants(overlay).first { $0.accessibilityIdentifier == "keyboard.touchDebugCopy" })
+    }
+    func testDebuggerOverlayTakesPriorityOverUnderlyingKeys() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 250, height: 120))
+        host.directTouchRoutingEnabled = true
+        let key = KeyboardButton(type: .custom)
+        key.frame = CGRect(x: 20, y: 50, width: 200, height: 60)
+        key.insertsOnTouchDown = true
+        host.addSubview(key)
+        let overlay = UIView(frame: host.bounds)
+        let copy = UIButton(type: .system)
+        copy.frame = CGRect(x: 20, y: 50, width: 200, height: 60)
+        overlay.addSubview(copy)
+        host.addSubview(overlay)
+        host.modalOverlay = overlay
+        XCTAssertTrue(host.hitTest(CGPoint(x: 100, y: 80), with: nil) === copy)
+        host.modalOverlay = nil
+    }
     func testSelectedTextCaseAndMarkdownFormattingNeverResizeKeyboard() throws {
         let (keyboard, proxy) = keyboard()
         let initialHeight = try XCTUnwrap(keyboard.inputView as? KeyboardInputView).contentHeight

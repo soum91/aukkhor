@@ -894,6 +894,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         overlay.layer.cornerRadius = 10
         overlay.clipsToBounds = true
         interactionHost.addSubview(overlay)
+        interactionHost.modalOverlay = overlay
         NSLayoutConstraint.activate([
             overlay.leadingAnchor.constraint(equalTo: interactionHost.leadingAnchor, constant: 4),
             overlay.trailingAnchor.constraint(equalTo: interactionHost.trailingAnchor, constant: -4),
@@ -926,22 +927,51 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         detail.isScrollEnabled = true
         detail.textContainerInset = .zero
         column.addArrangedSubview(detail)
+        let status = UILabel()
+        status.accessibilityIdentifier = "keyboard.touchDebugStatus"
+        status.font = .systemFont(ofSize: 11)
+        status.textColor = palette.foreground
+        status.numberOfLines = 2
+        status.text = hasFullAccess
+            ? "Copy to clipboard, or insert the report into the current text field."
+            : "Clipboard needs Full Access. Use Insert text, then copy from the current app."
+        column.addArrangedSubview(status)
         let actions = UIStackView()
         actions.distribution = .fillEqually
-        actions.spacing = 8
+        actions.spacing = 4
         let copy = UIButton(type: .system)
-        copy.setTitle("Copy report", for: .normal)
+        copy.accessibilityIdentifier = "keyboard.touchDebugCopy"
+        copy.setTitle("Copy", for: .normal)
         copy.addAction(UIAction { [weak self] _ in
             guard let self else { return }
+            guard self.hasFullAccess else {
+                status.text = "iOS blocks clipboard access here. Tap Insert text instead."
+                return
+            }
             UIPasteboard.general.string = self.lastTouchDebugReport
-            self.show("Touch report copied")
+            status.text = UIPasteboard.general.string == self.lastTouchDebugReport
+                ? "Copied. Paste it into your reply."
+                : "Clipboard write failed. Tap Insert text instead."
+        }, for: .touchUpInside)
+        let insert = UIButton(type: .system)
+        insert.accessibilityIdentifier = "keyboard.touchDebugInsert"
+        insert.setTitle("Insert text", for: .normal)
+        insert.addAction(UIAction { [weak self] _ in
+            guard let self, !self.lastTouchDebugReport.isEmpty else { return }
+            self.textDocumentProxy.insertText(self.lastTouchDebugReport)
+            status.text = "Inserted in the current text field. Select it there to copy."
         }, for: .touchUpInside)
         let done = UIButton(type: .system)
-        done.setTitle("Done / clear", for: .normal)
+        done.setTitle("Done", for: .normal)
         done.addAction(UIAction { [weak self] _ in self?.clearTouchDebugger() }, for: .touchUpInside)
+        for button in [copy, insert, done] {
+            button.titleLabel?.font = .systemFont(ofSize: 12, weight: .medium)
+            button.titleLabel?.adjustsFontSizeToFitWidth = true
+        }
         actions.addArrangedSubview(copy)
+        actions.addArrangedSubview(insert)
         actions.addArrangedSubview(done)
-        actions.heightAnchor.constraint(equalToConstant: 34).isActive = true
+        actions.heightAnchor.constraint(equalToConstant: 38).isActive = true
         column.addArrangedSubview(actions)
         touchDebugOverlay = overlay
     }
@@ -949,6 +979,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func clearTouchDebugger() {
         touchDebuggerRunning = false
         interactionHost.onTouchDiagnostic = nil
+        interactionHost.modalOverlay = nil
         touchDebugOverlay?.removeFromSuperview()
         touchDebugOverlay = nil
         touchSamples.removeAll()
