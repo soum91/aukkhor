@@ -8,7 +8,7 @@ import argparse
 import json
 import plistlib
 import zipfile
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 IPA = "Aukkhor-unsigned.ipa"
@@ -85,7 +85,7 @@ def main():
         main_app["versions"] = [{
             "version": marketing_version,
             "buildVersion": str(args.build),
-            "date": date.today().isoformat(),
+            "date": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "localizedDescription": note,
             "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
             "downloadURL": f"{prefix}/{IPA}",

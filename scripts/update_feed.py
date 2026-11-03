@@ -45,7 +45,7 @@ def update(version: str, build_number: str, ipa: Path) -> None:
     entry = {
         "version": marketing_version,
         "buildVersion": build_number,
-        "date": datetime.now(timezone.utc).date().isoformat(),
+        "date": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
         "localizedDescription": CHANGES,
         "changelog": CHANGES,
         "downloadURL": (
