@@ -834,7 +834,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if touch.view === interactionHost {
             receiver = "router"
         } else if let view = touch.view {
-            receiver = view.accessibilityIdentifier ?? String(describing: type(of: view))
+            receiver = view.accessibilityIdentifier ?? String(describing: Swift.type(of: view))
         } else {
             receiver = "no view"
         }
