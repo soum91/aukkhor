@@ -647,9 +647,49 @@ final class KeyboardInteractionView: UIView {
     }
 }
 
+// Disabled outside an explicitly requested touch-debug session. Observes
+// touches at the keyboard root even when a descendant receives the touch,
+// without recognizing a gesture or cancelling a control's own touch events.
+final class KeyboardRootTouchMonitor: UIGestureRecognizer {
+    var onTouchBegan: ((UITouch) -> Void)?
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesBegan(touches, with: event)
+        for touch in touches { onTouchBegan?(touch) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesEnded(touches, with: event)
+        if numberOfTouches == 0 { state = .failed }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesCancelled(touches, with: event)
+        state = .cancelled
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+}
+
 // UIKit asks this view for its own height when embedding it in the keyboard
 // presentation. A generic controller view leaves UIKit to guess that height.
 final class KeyboardInputView: UIInputView {
+    // UIKit can hit-test a decorative surface instead of the transparent key
+    // host after an extension-host layout transition. Prefer the live router
+    // whenever the point is inside it, including with the canvas disabled.
+    weak var keyRoutingView: KeyboardInteractionView?
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let keyRoutingView, !keyRoutingView.isHidden,
+           keyRoutingView.isUserInteractionEnabled, keyRoutingView.alpha > 0.01 {
+            let keyPoint = keyRoutingView.convert(point, from: self)
+            if keyRoutingView.bounds.contains(keyPoint),
+               let target = keyRoutingView.hitTest(keyPoint, with: event) {
+                return target
+            }
+        }
+        return super.hitTest(point, with: event)
+    }
     var contentHeight: CGFloat = KeyboardPreferences.typingHeight {
         didSet {
             if abs(oldValue - contentHeight) > 0.5 { invalidateIntrinsicContentSize() }
