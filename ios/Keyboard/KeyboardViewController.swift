@@ -572,7 +572,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            ("⚙", { [weak self] in self?.toggleTouchDebugger() }),
+            ("⚙", { [weak self] in self?.openAukkhorApp() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
@@ -585,8 +585,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         for (title, action) in controls {
             let button = makeButton(title, action: action)
             if title == "⚙" {
-                button.accessibilityLabel = "Touch debugger"
-                button.accessibilityHint = "Start or finish a local touch diagnostic session"
+                button.accessibilityLabel = "Open Aukkhor app"
+                button.accessibilityHint = "Open Aukkhor's full settings. Hold the top-right gear for the touch debugger."
             }
             button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 11 : 20)
             button.heightAnchor.constraint(equalToConstant: 34).isActive = true
@@ -788,6 +788,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if oneHandSide == 0 { toolsExpanded = !settingsPanel }
         settingsPanel.toggle()
         buildKeys()
+    }
+
+    // A keyboard extension cannot use UIApplication.shared. On iOS 26+, ask
+    // the hosting scene to open our registered deep link instead. iOS still
+    // decides whether this extension may launch an app (often requiring Full
+    // Access), so always keep the right-hand in-keyboard settings usable.
+    private func openAukkhorApp() {
+        guard !isPreview, let url = URL(string: "aukkhor://settings") else { return }
+        if #available(iOS 26.0, *), let scene = view.window?.windowScene {
+            scene.open(url, options: nil) { [weak self] opened in
+                if !opened { self?.fallbackOpenAukkhorApp(url) }
+            }
+        } else {
+            fallbackOpenAukkhorApp(url)
+        }
+    }
+
+    private func fallbackOpenAukkhorApp(_ url: URL) {
+        guard let extensionContext else {
+            showAppLaunchBlocked()
+            return
+        }
+        extensionContext.open(url) { [weak self] opened in
+            guard !opened else { return }
+            DispatchQueue.main.async { self?.showAppLaunchBlocked() }
+        }
+    }
+
+    private func showAppLaunchBlocked() {
+        show("iOS blocked opening Aukkhor. Try Allow Full Access; use the right gear for keyboard settings.")
     }
 
     @objc private func holdForTouchDebugger(_ recognizer: UILongPressGestureRecognizer) {
