@@ -175,6 +175,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let root = KeyboardInputView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width,
                                                    height: KeyboardPreferences.typingHeight), inputViewStyle: .default)
         root.allowsSelfSizing = true
+        // All letter touches share one router view. UIKit otherwise drops
+        // overlapping fingers because UIView defaults to single-touch.
+        root.isMultipleTouchEnabled = true
         root.autoresizingMask = [.flexibleWidth]
         root.backgroundColor = .clear
         root.isOpaque = false
@@ -186,6 +189,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         super.viewDidLoad()
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         surface.translatesAutoresizingMaskIntoConstraints = false
+        surface.isMultipleTouchEnabled = true
         surface.accessibilityIdentifier = "keyboard.surface"
         surface.layer.cornerRadius = 20
         surface.layer.cornerCurve = .continuous
@@ -219,6 +223,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         interactionHost.backgroundColor = .clear
         interactionHost.isOpaque = false
         interactionHost.isUserInteractionEnabled = true
+        // Essential for rapid alternating/multi-finger typing: the root
+        // monitor sees every touch, and this view must receive them too.
+        interactionHost.isMultipleTouchEnabled = true
         interactionHost.accessibilityIdentifier = "keyboard.interactionHost"
         surface.addSubview(interactionHost)
         (view as? KeyboardInputView)?.keyRoutingView = interactionHost

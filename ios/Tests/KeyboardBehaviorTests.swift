@@ -204,6 +204,21 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(KeyboardPreferences.hapticMode, .impact)
     }
 
+    func testLiveKeyboardReceivesOverlappingFingerTouches() {
+        let (keyboard, _) = keyboard()
+        XCTAssertTrue(keyboard.view.isMultipleTouchEnabled,
+                      "UIKit must deliver multiple simultaneous touches to the keyboard root")
+        let surface = keyboard.view.subviews.first {
+            $0.accessibilityIdentifier == "keyboard.surface"
+        }
+        XCTAssertNotNil(surface)
+        XCTAssertTrue(surface?.isMultipleTouchEnabled == true)
+        let router = surface?.subviews.compactMap { $0 as? KeyboardInteractionView }.first
+        XCTAssertNotNil(router)
+        XCTAssertTrue(router?.isMultipleTouchEnabled == true,
+                      "The shared letter router must receive every concurrent finger")
+    }
+
     func testDirectTouchRoutingInsertsOnContactOnceAndSupportsSensitivity() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
         host.directTouchRoutingEnabled = true
