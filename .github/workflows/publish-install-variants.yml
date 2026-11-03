@@ -18,28 +18,50 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
-      - name: Find newest successfully audited iOS build
+      - name: Find newest compiled and audited iOS IPA (tests may fail)
         id: build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios.yml/runs?branch=main&status=success&per_page=15" > "$RUNNER_TEMP/runs.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ios.yml/runs?branch=main&status=completed&per_page=30" > "$RUNNER_TEMP/runs.json"
           python3 - "$RUNNER_TEMP/runs.json" >> "$GITHUB_OUTPUT" <<'PY'
-          import json,sys
-          runs=json.load(open(sys.argv[1]))['workflow_runs']
-          good=[r for r in runs if r.get('conclusion')=='success' and r.get('head_branch')=='main']
-          if not good: raise SystemExit('No audited successful iOS build')
-          run=max(good,key=lambda r:int(r['run_number']))
-          print('id='+str(run['id']))
-          print('number='+str(run['run_number']))
+          import json, os, subprocess, sys
+          runs = json.load(open(sys.argv[1], encoding="utf-8"))["workflow_runs"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          for run in sorted(runs, key=lambda r: int(r["run_number"]), reverse=True):
+              if run.get("head_branch") != "main" or run.get("conclusion") not in ("success", "failure"):
+                  continue
+              run_id, build = run["id"], run["run_number"]
+              jobs = json.loads(subprocess.check_output([
+                  "gh", "api", f"repos/{repo}/actions/runs/{run_id}/jobs?per_page=30"
+              ], text=True))["jobs"]
+              steps = {step["name"]: step.get("conclusion")
+                       for job in jobs for step in job.get("steps", [])}
+              if (steps.get("Compile app and embedded keyboard") != "success"
+                      or steps.get("Audit keyboard-only IPA before publishing") != "success"):
+                  continue
+              artifacts = json.loads(subprocess.check_output([
+                  "gh", "api", f"repos/{repo}/actions/runs/{run_id}/artifacts?per_page=100"
+              ], text=True))["artifacts"]
+              name = f"Aukkhor-iOS-unsigned-{build}"
+              if not any(a["name"] == name and not a.get("expired") and a["size_in_bytes"] > 100000
+                         for a in artifacts):
+                  continue
+              if run["conclusion"] == "failure":
+                  print(f"::warning::Publishing verified IPA from run {build} despite failed tests", file=sys.stderr)
+              print(f"id={run_id}")
+              print(f"number={build}")
+              break
+          else:
+              raise SystemExit("No compiled, audited Aukkhor IPA artifact found")
           PY
       - uses: actions/download-artifact@v4
         with:

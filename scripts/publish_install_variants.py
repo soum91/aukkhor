@@ -28,7 +28,7 @@ def synchronize_latest_version(main_app, note):
         "versionDescription": note,
     })
 
-def inspect(path):
+def inspect(path, expected_build):
     if not path.is_file() or path.stat().st_size < 100_000:
         raise SystemExit(f"Missing or unexpectedly small IPA: {path}")
     with zipfile.ZipFile(path) as archive:
@@ -50,6 +50,10 @@ def inspect(path):
         for label, info in (("main", app), ("keyboard", keyboard)):
             if not str(info.get("CFBundleDisplayName", "")).strip():
                 raise SystemExit(f"Missing display name in {label}")
+            if str(info.get("CFBundleVersion")) != str(expected_build):
+                raise SystemExit(f"Unexpected {label} build number in IPA: {info.get('CFBundleVersion')}")
+            if info.get("CFBundleShortVersionString") != "0.2.0":
+                raise SystemExit(f"Unexpected {label} marketing version in IPA")
         print("Verified host + keyboard extension only; no Share extension")
 
 def main():
@@ -60,7 +64,7 @@ def main():
     args = parser.parse_args()
     version = f"0.2.0.{args.build}"
     # Feed versions must distinguish builds; IPA Info.plist keeps its own marketing version.
-    inspect(args.directory / IPA)
+    inspect(args.directory / IPA, args.build)
     prefix = (
         f"https://github.com/soum91/aukkhor/releases/download/v{version}"
         if args.mode == "release"
