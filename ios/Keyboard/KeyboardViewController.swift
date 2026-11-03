@@ -220,6 +220,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         pressLens.accessibilityIdentifier = "keyboard.pressLens"
         surface.addSubview(pressLens)
         interactionHost.translatesAutoresizingMaskIntoConstraints = false
+        // A nearly invisible, full-size touch plate keeps the keyboard's
+        // transparent styles in the remote host's composited input region.
+        // Hit targets remain UIKit rectangles; no visible keycap is added.
         interactionHost.backgroundColor = .clear
         interactionHost.isOpaque = false
         interactionHost.isUserInteractionEnabled = true
@@ -236,6 +239,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // public callback while leaving native controls and touch-up intact.
         rootTouchMonitor.onTouchBegan = { [weak self] touch in
             self?.handleRootTouchDown(touch)
+        }
+        rootTouchMonitor.onTouchMoved = { [weak self] touch in
+            guard let self, touch.view === self.interactionHost,
+                  self.interactionHost.directTouchRoutingEnabled else { return }
+            self.interactionHost.advanceTrackedDirectKey(
+                for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost))
         }
         rootTouchMonitor.isEnabled = !isPreview
         NSLayoutConstraint.activate([
@@ -762,6 +771,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide
         interactionHost.touchExpansion = KeyboardPreferences.touchExpansion
+        // Invisible keycaps must not make the entire keyboard surface vanish
+        // from the extension host's composited touch region. This very faint
+        // fill is on the shared plate, never on individual keys.
+        interactionHost.backgroundColor = KeyboardPreferences.keycapStyle == 0
+            ? .clear : UIColor.systemBackground.withAlphaComponent(0.016)
         interactionHost.directTouchRoutingEnabled = !isPreview && !typingOptions.glide && KeyboardPreferences.directTouchRouting
         suggestionRequestKey = nil
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)

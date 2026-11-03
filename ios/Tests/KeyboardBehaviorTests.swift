@@ -219,6 +219,77 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
                       "The shared letter router must receive every concurrent finger")
     }
 
+    func testAllKeycapStylesKeepFullSizeTouchRoutingTargets() throws {
+        let savedStyle = KeyboardPreferences.keycapStyle
+        let savedPreset = KeyboardPreferences.preset
+        defer {
+            KeyboardPreferences.keycapStyle = savedStyle
+            KeyboardPreferences.preset = savedPreset
+        }
+        KeyboardPreferences.preset = .custom
+        func buttons(in view: UIView) -> [UIButton] {
+            (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { buttons(in: $0) }
+        }
+        var originalFrames: [String: CGRect] = [:]
+        for style in 0...2 {
+            KeyboardPreferences.keycapStyle = style
+            let keyboard = KeyboardViewController()
+            keyboard.isPreview = true
+            keyboard.loadViewIfNeeded()
+            keyboard.view.frame = CGRect(x: 0, y: 0, width: 390,
+                                         height: KeyboardPreferences.typingHeight)
+            keyboard.view.layoutIfNeeded()
+            let surface = try XCTUnwrap(keyboard.view.subviews.first {
+                $0.accessibilityIdentifier == "keyboard.surface"
+            })
+            let router = try XCTUnwrap(surface.subviews.compactMap {
+                $0 as? KeyboardInteractionView
+            }.first)
+            XCTAssertEqual(router.bounds, surface.bounds)
+            XCTAssertTrue(router.isUserInteractionEnabled)
+            XCTAssertTrue(router.isMultipleTouchEnabled)
+            let backgroundAlpha = router.backgroundColor?.cgColor.alpha ?? 0
+            if style == 0 { XCTAssertEqual(backgroundAlpha, 0) }
+            else { XCTAssertGreaterThan(backgroundAlpha, 0); XCTAssertLessThan(backgroundAlpha, 0.02) }
+            for character in ["q", "w", "a", "s", "z", "x"] {
+                let button = try XCTUnwrap(buttons(in: keyboard.view).first {
+                    $0.accessibilityLabel == character
+                })
+                let frame = button.convert(button.bounds, to: keyboard.view)
+                if style == 0 { originalFrames[character] = frame }
+                else { XCTAssertEqual(frame, try XCTUnwrap(originalFrames[character]),
+                                      "Removing keycaps must not shrink the touch cell") }
+                let center = CGPoint(x: frame.midX, y: frame.midY)
+                XCTAssertTrue(keyboard.view.hitTest(center, with: nil) === button,
+                              "Key \(character) should receive touches without a visible cap")
+                router.directTouchRoutingEnabled = true
+                XCTAssertTrue(keyboard.view.hitTest(center, with: nil) === router,
+                              "Direct input must use the same touch cell with every keycap style")
+                router.directTouchRoutingEnabled = false
+            }
+        }
+    }
+
+    func testAncestorMoveRescueDoesNotDoubleInsert() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        var inserted: [String] = []
+        for (label, x) in [("q", CGFloat(20)), ("w", CGFloat(73))] {
+            let key = KeyboardButton(type: .custom)
+            key.accessibilityLabel = label
+            key.insertsOnTouchDown = true
+            key.frame = CGRect(x: x, y: 20, width: 45, height: 45)
+            key.addAction(UIAction { _ in inserted.append(label) }, for: .touchDown)
+            host.addSubview(key)
+        }
+        let touch = ObjectIdentifier(NSObject())
+        XCTAssertNotNil(host.beginTrackedDirectKey(for: touch, at: CGPoint(x: 42, y: 42), early: true))
+        host.advanceTrackedDirectKey(for: touch, at: CGPoint(x: 95, y: 42))
+        host.advanceTrackedDirectKey(for: touch, at: CGPoint(x: 95, y: 42))
+        XCTAssertEqual(inserted, ["q", "w"])
+        XCTAssertEqual(host.movementRecoveryCount, 1)
+    }
+
     func testDirectTouchRoutingInsertsOnContactOnceAndSupportsSensitivity() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 200, height: 100))
         host.directTouchRoutingEnabled = true

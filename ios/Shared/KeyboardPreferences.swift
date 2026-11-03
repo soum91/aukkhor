@@ -654,6 +654,17 @@ final class KeyboardInteractionView: UIView {
         return candidate
     }
 
+    // The ancestor monitor receives movement before the extension host may
+    // deliver it to this view. Reuse the same touch identity so a finger roll
+    // can be recovered once, without a second insertion on deferred delivery.
+    func advanceTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
+                                 event: UIEvent? = nil) {
+        guard let current = trackedKeys[touchID] else { return }
+        if let next = transitionDirectKey(from: current, to: point, event: event) {
+            trackedKeys[touchID] = next
+        }
+    }
+
     func cancelActiveTouches() {
         for key in trackedKeys.values {
             key.isHighlighted = false
@@ -683,12 +694,8 @@ final class KeyboardInteractionView: UIView {
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            let id = ObjectIdentifier(touch)
-            let position = touch.location(in: self)
-            let current = trackedKeys[id]
-            if let next = transitionDirectKey(from: current, to: position, event: event) {
-                trackedKeys[id] = next
-            }
+            advanceTrackedDirectKey(for: ObjectIdentifier(touch),
+                                    at: touch.location(in: self), event: event)
             // Preserve a key that has already inserted its letter when a
             // finger briefly travels through the gap. Release on lift; a
             // later movement into another key's center can still be rescued.
@@ -715,10 +722,16 @@ final class KeyboardInteractionView: UIView {
 // records sample details; no keystroke history is retained during normal use.
 final class KeyboardRootTouchMonitor: UIGestureRecognizer {
     var onTouchBegan: ((UITouch) -> Void)?
+    var onTouchMoved: ((UITouch) -> Void)?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesBegan(touches, with: event)
         for touch in touches { onTouchBegan?(touch) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        for touch in touches { onTouchMoved?(touch) }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
