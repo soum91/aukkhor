@@ -41,8 +41,9 @@ def update(version: str, build_number: str, ipa: Path) -> None:
     }
     if data.get("apps"):
         app["versions"] = data["apps"][0].get("versions", [])
+    marketing_version = version[:-(len(build_number) + 1)] if version.endswith("." + build_number) else version
     entry = {
-        "version": version,
+        "version": marketing_version,
         "buildVersion": build_number,
         "date": datetime.now(timezone.utc).date().isoformat(),
         "localizedDescription": CHANGES,
@@ -55,7 +56,7 @@ def update(version: str, build_number: str, ipa: Path) -> None:
     }
     app["versions"] = [entry] + [
         previous for previous in app["versions"]
-        if previous.get("version") != version
+        if str(previous.get("buildVersion")) != build_number
     ]
     app.update({
         "version": entry["version"],

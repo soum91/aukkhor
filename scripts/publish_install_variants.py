@@ -59,6 +59,7 @@ def main():
     parser.add_argument("--mode", required=True, choices=("release", "direct"))
     args = parser.parse_args()
     version = f"0.2.0.{args.build}"
+    marketing_version = "0.2.0"
     inspect(args.directory / IPA)
     prefix = (
         f"https://github.com/soum91/aukkhor/releases/download/v{version}"
@@ -82,7 +83,7 @@ def main():
         main_app["subtitle"] = "iPhone keyboard · " + version
         main_app["localizedDescription"] = note
         main_app["versions"] = [{
-            "version": version,
+            "version": marketing_version,
             "buildVersion": str(args.build),
             "date": date.today().isoformat(),
             "localizedDescription": note,
@@ -90,7 +91,7 @@ def main():
             "downloadURL": f"{prefix}/{IPA}",
             "size": (args.directory / IPA).stat().st_size,
             "minOSVersion": "16.0",
-        }] + [old for old in current if old.get("version") != version][:5]
+        }] + [old for old in current if str(old.get("buildVersion")) != str(args.build)][:5]
         # Older Zeus/FlareStore consumers read these top-level fields instead
         # of versions[0]. Leaving them pinned to a previous build silently
         # installed the old keyboard, making already-fixed bugs appear to return.

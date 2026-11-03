@@ -25,6 +25,7 @@ class FeedLatestVersionTests(unittest.TestCase):
         for field in ("version", "buildVersion", "downloadURL", "size", "minOSVersion"):
             self.assertEqual(app[field], app["versions"][0][field])
         self.assertEqual(app["versionDate"], app["versions"][0]["date"])
+        self.assertEqual(app["buildVersion"], "68")
         self.assertEqual(app["versionDescription"], "Verified keyboard with input fixes")
 
 

@@ -55,7 +55,7 @@ def main() -> None:
         if len(apps) != 1 or apps[0].get("bundleIdentifier") != "dev.soum91.aukkhor":
             raise SystemExit("Unexpected feed structure in " + name)
         items = apps[0].get("versions", [])
-        entry = next((x for x in items if x.get("version") == version), None)
+        entry = next((x for x in items if str(x.get("buildVersion")) == str(args.build)), None)
         if entry is None:
             raise SystemExit("Run scripts/update_feed.py first: missing " + version)
         entry["downloadURL"] = f"{prefix}/Aukkhor-unsigned.ipa"
@@ -64,7 +64,7 @@ def main() -> None:
         entry["changelog"] = notes
         entry["size"] = args.ipa.stat().st_size
         apps[0]["versions"] = [entry] + [
-            previous for previous in items if previous.get("version") != version
+            previous for previous in items if str(previous.get("buildVersion")) != str(args.build)
         ]
         path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print("Aukkhor FlareStore " + version + " distribution mode: " + args.mode)
