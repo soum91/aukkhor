@@ -6,6 +6,7 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     var text = ""
     private var selection: Range<String.Index>?
     var documentIdentifier = UUID()
+    var textContentType: UITextContentType! = nil
     var documentContextBeforeInput: String? { text }
     var documentContextAfterInput: String? { "" }
     var selectedText: String? { selection.map { String(text[$0]) } }
@@ -56,6 +57,23 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingReplacements = ["omw": "on my way"]
         return (keyboard, proxy)
     }
+    func testOTPFieldShowsExplicitActionsWhenWordSuggestionsAreOff() {
+        let (keyboard, proxy) = keyboard()
+        proxy.textContentType = .oneTimeCode
+        keyboard.textDidChange(nil)
+        XCTAssertTrue(keyboard.testingOTPActionVisible)
+        XCTAssertEqual(Array(keyboard.testingCandidateTitles.prefix(2)), ["Paste OTP", "Next keyboard"])
+        XCTAssertEqual(proxy.text, "", "Opening the OTP bar must never inspect or type a secret")
+        XCTAssertTrue(keyboard.testingInsertOTP(from: "Your sign-in code is 827641."))
+        XCTAssertEqual(proxy.text, "827641")
+        XCTAssertFalse(keyboard.testingInsertOTP(from: "Codes: 827641 and 123456"),
+                       "Ambiguous clipboard text must not paste a guessed OTP")
+        XCTAssertEqual(proxy.text, "827641")
+        proxy.textContentType = nil
+        keyboard.textDidChange(nil)
+        XCTAssertFalse(keyboard.testingOTPActionVisible)
+    }
+
     func testBackspaceUndoesReplacementAndDoesNotImmediatelyExpandAgain() {
         let (keyboard, proxy) = keyboard()
         keyboard.testingType("omw")

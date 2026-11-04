@@ -91,6 +91,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastAppearanceSignature: String?
     private var candidateButtons: [UIButton] = []
     private var candidateValues = [String](repeating: "", count: 3)
+    private var otpActionsVisible = false
     private let suggestionHeading = UILabel()
     private var suggestionRequestKey: String?
     private var contextRefreshWork: DispatchWorkItem?
@@ -128,6 +129,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func testingDelete() { backspace() }
     func testingStartDelete() { startDelete() }
     func testingStopDelete() { stopDelete() }
+    var testingOTPActionVisible: Bool { otpActionsVisible }
+    var testingCandidateTitles: [String] { candidateValues }
+    func testingInsertOTP(from text: String) -> Bool { insertOneTimeCode(from: text) }
     func testingFormatSelection(_ action: String) { if let action = SelectionFormat(rawValue: action) { formatSelection(action) } }
     func testingToggleTouchDebugger() { toggleTouchDebugger() }
     var testingTouchDebugOverlay: UIView? { touchDebugOverlay }
@@ -329,6 +333,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 buildKeys()
             }
             prepareHaptic()
+            refreshSuggestions()
         }
     }
 
@@ -673,6 +678,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let controls: [(String, () -> Void)] = [
             ("⚙", { [weak self] in self?.toggleTouchDebugger() }),
             ("Paste", { [weak self] in self?.paste() }),
+            ("OTP", { [weak self] in self?.pasteOneTimeCode() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
             ("Speak", { [weak self] in self?.speak() }),
@@ -1479,7 +1485,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 let button = stripButton("", action: { [weak self] in
                     guard let self else { return }
                     let value = self.candidateValues[index]
-                    if !value.isEmpty { self.applySuggestion(value) }
+                    if self.otpActionsVisible {
+                        if index == 0 { self.pasteOneTimeCode() }
+                        if index == 1 { self.switchForSystemOTP() }
+                    } else if !value.isEmpty { self.applySuggestion(value) }
                 })
                 button.accessibilityIdentifier = "keyboard.candidate.\(index)"
                 button.constraints.filter { $0.firstAttribute == .width }.forEach { $0.isActive = false }
@@ -1536,6 +1545,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         contextRefreshGeneration += 1
         let generation = contextRefreshGeneration
         contextRefreshWork?.cancel()
+        // iOS owns SMS/Mail AutoFill. A keyboard extension gets only input traits,
+        // never the system's secret code suggestions. Do not inspect the clipboard
+        // until the user explicitly taps Paste OTP.
+        if textDocumentProxy.textContentType == .oneTimeCode,
+           !emojiMode, !clipboardPanel, !settingsPanel {
+            otpActionsVisible = true
+            suggestionRequestKey = nil
+            setCandidates(["Paste OTP", "Next keyboard"])
+            return
+        }
+        otpActionsVisible = false
         if emojiMode || clipboardPanel || settingsPanel || symbols || !typingOptions.suggestions {
             suggestionRequestKey = nil
             let heading: String? = emojiMode ? (emojiSearch ? "🔍 \(emojiQuery)" : "Emoji: \(emojiGroup)")
@@ -1789,6 +1809,35 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // no supported API for setting Notes' NSAttributedString attributes.
         textDocumentProxy.insertText(transformed)
         refreshSuggestions()
+    }
+
+    @discardableResult
+    private func insertOneTimeCode(from text: String) -> Bool {
+        guard let code = CodeExtractor.extract(text) else { return false }
+        commitBuffer()
+        pendingReplacement = nil
+        textDocumentProxy.insertText(code)
+        refreshSuggestions()
+        return true
+    }
+
+    private func pasteOneTimeCode() {
+        guard requireClipboardAccess() else { return }
+        guard let value = UIPasteboard.general.string else {
+            show("Copy a verification code first, or switch to Apple's keyboard for AutoFill")
+            return
+        }
+        guard insertOneTimeCode(from: value) else {
+            show("No unique 4–8 digit code in clipboard")
+            return
+        }
+        show("Verification code pasted")
+    }
+
+    private func switchForSystemOTP() {
+        // advanceToNextInputMode is the supported API; it may lead to another
+        // third-party keyboard, depending on the user's installed keyboard order.
+        advanceToNextInputMode()
     }
 
     private func paste() {

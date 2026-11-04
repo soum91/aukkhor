@@ -47,7 +47,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 | Siri and OTP to Windows | App Intents / Shortcuts and explicit clipboard actions; no automatic SMS reader |
 | Windows pasteboard sync | Foreground app sync plus explicit keyboard send/get |
 | iPhone typing for TV and Windows | Direct paired connections; auto prompt polling while iPhone app is foregrounded |
-| Password/OTP AutoFill like iOS | System-controlled; custom keyboard does not implement Apple's private AutoFill UI |
+| Password/OTP AutoFill like iOS | Apple's SMS/Mail AutoFill UI is unavailable inside a third-party keyboard. OTP fields display Paste OTP (explicit clipboard read) and Next keyboard (to reach Apple's AutoFill); expanded tools include OTP. |
 | Remove Share extension | Excluded from current app and publishing pipeline |
 
 ## Current implementation
@@ -62,7 +62,7 @@ A native iOS custom keyboard and separate Windows companion. The app is a new pr
 - Clipboard push/pull over mutually authenticated, certificate-pinned HTTPS on a private local network. Keyboard operations are explicitly initiated, not an invisible background monitor.
 - Siri / Shortcuts intents for sending clipboard text and forwarding a one-time code. Windows keeps the code briefly and offers Copy or **Ctrl+Alt+B** to type it in the focused app.
 - The former Share extension is excluded from the current app; use the Shortcuts intent for code forwarding.
-- A single opt-in 4–8 digit one-time code may be sent by user action or a user-configured Shortcuts automation. The app does **not** read SMS, Apple Mail, Gmail, or notifications on its own.
+- A single opt-in 4–8 digit one-time code may be sent by user action or a user-configured Shortcuts automation. On a field marked `.oneTimeCode`, the keyboard offers Paste OTP, which extracts a unique 4–8 digit code from the clipboard **only after the user taps it**, and Next keyboard to reach native iOS AutoFill. Expanded keyboard tools also include OTP when a site does not mark its code field correctly. The app does **not** read SMS, Apple Mail, Gmail, or notifications on its own.
 
 ## Build
 

@@ -432,7 +432,7 @@ private final class KeyboardSystemTestController: UIViewController {
 
                 Section("One-time codes") {
                     Button("Forward code from clipboard") { Task { await forwardCode() } }
-                    Text("Use the Aukkhor Shortcuts action ‘Forward Code to Windows’ for text handed to it by a Messages automation, Siri, or a Share/Copy action. Aukkhor cannot independently read SMS, Mail, or Gmail.")
+                    Text("For SMS or Mail AutoFill, switch to Apple's keyboard. In one-time-code fields, Aukkhor offers Paste OTP from an explicitly copied code and Next keyboard. The OTP action also appears in the expanded tools rail. Aukkhor cannot independently read SMS, Mail, or Gmail. The Shortcuts action ‘Forward Code to Windows’ is separate.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
