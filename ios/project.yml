@@ -44,7 +44,7 @@ targets:
           - location
         NSPhotoLibraryUsageDescription: Aukkhor optionally reads newly saved screenshots to copy them automatically to your clipboard while its app or keyboard is active.
         NSLocalNetworkUsageDescription: Aukkhor connects to your chosen Windows PC over local Wi-Fi for clipboard and opt-in code forwarding.
-        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
+        AukkhorKeychainGroup: $(AppIdentifierPrefix)com.soum91.vaultbridge.shared
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -83,7 +83,7 @@ targets:
             PrefersRightToLeft: false
             PrimaryLanguage: en
             RequestsOpenAccess: true
-        AukkhorKeychainGroup: $(AppIdentifierPrefix)dev.soum91.aukkhor.shared
+        AukkhorKeychainGroup: $(AppIdentifierPrefix)com.soum91.vaultbridge.shared
     entitlements:
       path: Keyboard/AukkhorKeyboard.entitlements
   AukkhorTests:
