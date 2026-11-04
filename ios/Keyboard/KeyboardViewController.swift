@@ -622,10 +622,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         row.spacing = KeyboardPreferences.keySpacing
         row.distribution = .fill
         let toggle = makeButton("#+=", action: { [weak self] in
-            self?.symbolPage = 0
+            self?.symbolPage = 1
             self?.buildKeys()
         })
-        toggle.accessibilityLabel = "Previous symbols"
+        toggle.accessibilityLabel = "More symbols"
         toggle.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.12).isActive = true
         row.addArrangedSubview(toggle)
         for symbol in [".", ",", "?", "!", "'"] {
@@ -827,11 +827,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } else if symbols {
             addChars(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
             if symbolPage == 0 {
-                addChars(["@", "#", "$", "%", "&", "-", "+", "(", ")", "/"])
-                addChars(["*", "\"", ":", ";", "!", "?", "'", ",", ".", "_"])
-            } else {
                 addChars(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
                 addNativeSymbolsThirdRow()
+            } else {
+                addChars(["@", "#", "$", "%", "&", "-", "+", "(", ")", "/"])
+                addChars(["*", "\"", ":", ";", "!", "?", "'", ",", ".", "_"])
             }
         } else if mode == .bangla {
             if KeyboardPreferences.numberRow { addChars(["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "০"]) }
@@ -853,11 +853,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         let needsEditingKeys = symbols || mode == .bangla || emojiMode || clipboardPanel || settingsPanel
         var bottomControls: [(String, () -> Void)] = [
-            (symbols ? (symbolPage == 0 ? "#+=" : "ABC") : "123", { [weak self] in
+            (symbols ? "ABC" : "123", { [weak self] in
                 guard let self else { return }
                 self.commitBuffer()
-                if self.symbols && self.symbolPage == 0 { self.symbolPage = 1 }
-                else if self.symbols { self.symbols = false; self.symbolPage = 0 }
+                if self.symbols { self.symbols = false; self.symbolPage = 0 }
                 else { self.symbols = true; self.symbolPage = 0 }
                 self.emojiMode = false
                 self.clipboardPanel = false; self.settingsPanel = false; self.buildKeys()
