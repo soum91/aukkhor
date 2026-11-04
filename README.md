@@ -161,3 +161,9 @@ The build audits the keyboard-service identifier, display names, iPhoneOS metada
 **Background: iOS** is the default for System and glass themes. It leaves the native keyboard background visible, without a second rounded or tinted panel confined to the extension. **Background: Custom** retains the separate Clear/Frosted glass canvas, tint and photos; its edge can contrast with iOS's surrounding chrome. Keycap removal and key glass are independent of this setting. iOS owns the globe area and any margins outside the extension. A reported iOS 27 app-switching regression adds an external top strip without changing the extension's bounds; the extension cannot remove that system area. Neither a height slider nor a negative inset is a verified fix for that OS defect.
 
 For an installation failure, retain the full error code and log from FlareStore or EmberSign. A signer must provision both app identifiers and sign the embedded keyboard, as well as the host.
+
+## VaultBridge one-time-code handoff
+
+Aukkhor can fill a short-lived SMS code from VaultBridge when the host field is marked as a one-time code. VaultBridge receives the code through its `vaultbridge://otp?code=...` URL handler and writes only that expiring code to the existing Aukkhor app-group container. Tap the OTP suggestion in Aukkhor to fill and consume it. The inbox expires after five minutes and is deleted after use.
+
+The Aukkhor app, keyboard, and share extension do not receive VaultBridge's password Keychain group. Codes stay on-device and are not uploaded by this handoff. Both apps must be signed by the same Apple team with the Aukkhor app-group entitlement present in both provisioning profiles. Configure a Messages automation in Shortcuts to open `vaultbridge://otp?code=[Message]`; VaultBridge accepts one unambiguous 4–10 digit run from the message.
