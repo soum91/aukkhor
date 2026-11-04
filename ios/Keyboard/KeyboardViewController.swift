@@ -50,6 +50,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastShiftTap = Date.distantPast
     private var lastSpaceTap = Date.distantPast
     private var symbols = false
+    private var symbolPage = 0
     private var nativeSigns = false
     private var oneHandSide = KeyboardPreferences.oneHandSide // 0 full, 1 left, 2 right
     private var settingsPanel = false
@@ -615,6 +616,29 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    private func addNativeSymbolsThirdRow() {
+        let row = UIStackView()
+        row.axis = .horizontal
+        row.spacing = KeyboardPreferences.keySpacing
+        row.distribution = .fill
+        let toggle = makeButton("#+=", action: { [weak self] in
+            self?.symbolPage = 0
+            self?.buildKeys()
+        })
+        toggle.accessibilityLabel = "Previous symbols"
+        toggle.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.12).isActive = true
+        row.addArrangedSubview(toggle)
+        for symbol in [".", ",", "?", "!", "'"] {
+            row.addArrangedSubview(makeButton(symbol, action: { [weak self] in self?.type(symbol) }))
+        }
+        let deleteKey = makeButton("⌫", action: { [weak self] in self?.backspace() })
+        deleteKey.accessibilityLabel = "Delete"
+        deleteKey.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15).isActive = true
+        row.addArrangedSubview(deleteKey)
+        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
+        stack.addArrangedSubview(oneHandRow(row))
+    }
+
     private func addThirdRow(_ chars: [String]) {
         let container = UIStackView()
         container.spacing = 0
@@ -802,8 +826,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             buildEmojiPanel()
         } else if symbols {
             addChars(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
-            addChars(["@", "#", "$", "%", "&", "-", "+", "(", ")", "/"])
-            addChars(["*", "\"", ":", ";", "!", "?", "'", ",", ".", "_"])
+            if symbolPage == 0 {
+                addChars(["@", "#", "$", "%", "&", "-", "+", "(", ")", "/"])
+                addChars(["*", "\"", ":", ";", "!", "?", "'", ",", ".", "_"])
+            } else {
+                addChars(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
+                addNativeSymbolsThirdRow()
+            }
         } else if mode == .bangla {
             if KeyboardPreferences.numberRow { addChars(["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "০"]) }
             if nativeSigns {
@@ -824,9 +853,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         let needsEditingKeys = symbols || mode == .bangla || emojiMode || clipboardPanel || settingsPanel
         var bottomControls: [(String, () -> Void)] = [
-            (symbols ? "ABC" : "123", { [weak self] in
-                self?.commitBuffer(); self?.symbols.toggle(); self?.emojiMode = false
-                self?.clipboardPanel = false; self?.settingsPanel = false; self?.buildKeys()
+            (symbols ? (symbolPage == 0 ? "#+=" : "ABC") : "123", { [weak self] in
+                guard let self else { return }
+                self.commitBuffer()
+                if self.symbols && self.symbolPage == 0 { self.symbolPage = 1 }
+                else if self.symbols { self.symbols = false; self.symbolPage = 0 }
+                else { self.symbols = true; self.symbolPage = 0 }
+                self.emojiMode = false
+                self.clipboardPanel = false; self.settingsPanel = false; self.buildKeys()
             }),
             ("😊", { [weak self] in self?.toggleEmoji() }),
             ("Space", { [weak self] in self?.typeSpaceFromTouchDown() }),
@@ -1486,8 +1520,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     guard let self else { return }
                     let value = self.candidateValues[index]
                     if self.otpActionsVisible {
-                        if index == 0 { self.pasteOneTimeCode() }
-                        if index == 1 { self.switchForSystemOTP() }
+                        if value.hasPrefix("OTP ") {
+                            if let code = OTPInbox.consumeLatest() {
+                                self.commitBuffer()
+                                self.textDocumentProxy.insertText(code)
+                                self.show("VaultBridge code filled")
+                                self.refreshSuggestions()
+                            }
+                        } else if value == "Paste OTP" { self.pasteOneTimeCode() }
+                        else if value == "Next keyboard" { self.switchForSystemOTP() }
                     } else if !value.isEmpty { self.applySuggestion(value) }
                 })
                 button.accessibilityIdentifier = "keyboard.candidate.\(index)"
@@ -1552,7 +1593,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
            !emojiMode, !clipboardPanel, !settingsPanel {
             otpActionsVisible = true
             suggestionRequestKey = nil
-            setCandidates(["Paste OTP", "Next keyboard"])
+            if let code = OTPInbox.latestCode() {
+                setCandidates(["OTP  \(code)", "Paste OTP", "Next keyboard"])
+            } else {
+                setCandidates(["Paste OTP", "Next keyboard"])
+            }
             return
         }
         otpActionsVisible = false
