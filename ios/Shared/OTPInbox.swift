@@ -1,11 +1,10 @@
 import Foundation
-import Security
 
-/// Shared, short-lived OTP inbox. The inbox contains only a temporary code;
-/// long-lived TOTP secrets stay in VaultBridge.
+/// Reads only the short-lived OTP handoff in Aukkhor's shared app-group
+/// container. VaultBridge's password Keychain group is not granted to Aukkhor.
 enum OTPInbox {
-    private static let service = "com.soum91.vaultbridge.otp"
-    private static let account = "active-code"
+    private static let group = "group.dev.soum91.aukkhor"
+    private static let filename = "otp-inbox-v1.json"
 
     private struct Envelope: Codable {
         let code: String
@@ -13,63 +12,27 @@ enum OTPInbox {
         let expiresAt: Date
     }
 
-    static func store(_ rawCode: String, source: String = "Shortcuts", ttl: TimeInterval = 300) throws {
-        let code = rawCode.filter { $0.isASCII && ($0.isNumber || $0.isLetter) }
-        guard (4...10).contains(code.count), ttl > 0 else { throw InboxError.invalidCode }
-        let envelope = Envelope(code: code, source: source, expiresAt: Date().addingTimeInterval(min(ttl, 600)))
-        let data = try JSONEncoder().encode(envelope)
-        var query = baseQuery
-        let changes: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        ]
-        let status = SecItemUpdate(query as CFDictionary, changes as CFDictionary)
-        if status == errSecItemNotFound {
-            changes.forEach { query[$0.key] = $0.value }
-            let added = SecItemAdd(query as CFDictionary, nil)
-            guard added == errSecSuccess else { throw InboxError.keychain(added) }
-        } else if status != errSecSuccess {
-            throw InboxError.keychain(status)
-        }
-    }
-
     static func latestCode() -> String? { read()?.code }
 
     static func consumeLatest() -> String? {
         guard let envelope = read() else { return nil }
-        SecItemDelete(baseQuery as CFDictionary)
+        try? FileManager.default.removeItem(at: fileURL)
         return envelope.code
     }
 
     private static func read() -> Envelope? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-              let data = result as? Data,
+        guard let data = try? Data(contentsOf: fileURL),
               let envelope = try? JSONDecoder().decode(Envelope.self, from: data) else { return nil }
         guard envelope.expiresAt > Date() else {
-            SecItemDelete(baseQuery as CFDictionary)
+            try? FileManager.default.removeItem(at: fileURL)
             return nil
         }
         return envelope
     }
 
-    private static var baseQuery: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
-    }
-
-    enum InboxError: LocalizedError {
-        case invalidCode
-        case keychain(OSStatus)
-        var errorDescription: String? {
-            switch self {
-            case .invalidCode: return "Code must contain 4 to 10 letters or numbers."
-            case .keychain(let status): return "Could not store the temporary code (\(status))."
-            }
-        }
+    private static var fileURL: URL {
+        let directory = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: group)!
+        return directory.appendingPathComponent(filename, isDirectory: false)
     }
 }
