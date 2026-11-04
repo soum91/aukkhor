@@ -164,6 +164,6 @@ For an installation failure, retain the full error code and log from FlareStore 
 
 ## VaultBridge one-time-code handoff
 
-Aukkhor can fill a short-lived SMS code from VaultBridge when the host field is marked as a one-time code. VaultBridge receives the code through its `vaultbridge://otp?code=...` URL handler and writes only that expiring code to the existing Aukkhor app-group container. Tap the OTP suggestion in Aukkhor to fill and consume it. The inbox expires after five minutes and is deleted after use.
+Aukkhor can fill a short-lived SMS code or an available generated TOTP code from VaultBridge when the host field is marked as a one-time code. VaultBridge receives the code through its `vaultbridge://otp?code=...` URL handler and writes only that expiring code to the existing Aukkhor app-group container. Tap the OTP suggestion in Aukkhor to fill and consume it. SMS codes expire after five minutes and are deleted after use. Generated TOTP codes remain available only until their current time window expires.
 
 The Aukkhor app, keyboard, and share extension do not receive VaultBridge's password Keychain group. Codes stay on-device and are not uploaded by this handoff. Both apps must be signed by the same Apple team with the Aukkhor app-group entitlement present in both provisioning profiles. Configure a Messages automation in Shortcuts to open `vaultbridge://otp?code=[Message]`; VaultBridge accepts one unambiguous 4–10 digit run from the message.

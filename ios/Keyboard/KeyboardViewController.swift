@@ -93,6 +93,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var candidateButtons: [UIButton] = []
     private var candidateValues = [String](repeating: "", count: 3)
     private var otpActionsVisible = false
+    private var otpCandidates: [OTPInbox.Candidate] = []
     private let suggestionHeading = UILabel()
     private var suggestionRequestKey: String?
     private var contextRefreshWork: DispatchWorkItem?
@@ -1519,8 +1520,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     guard let self else { return }
                     let value = self.candidateValues[index]
                     if self.otpActionsVisible {
-                        if value.hasPrefix("OTP ") {
-                            if let code = OTPInbox.consumeLatest() {
+                        if index < self.otpCandidates.count {
+                            if let code = OTPInbox.consume(self.otpCandidates[index]) {
                                 self.commitBuffer()
                                 self.textDocumentProxy.insertText(code)
                                 self.show("VaultBridge code filled")
@@ -1592,10 +1593,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
            !emojiMode, !clipboardPanel, !settingsPanel {
             otpActionsVisible = true
             suggestionRequestKey = nil
-            if let code = OTPInbox.latestCode() {
-                setCandidates(["OTP  \(code)", "Paste OTP", "Next keyboard"])
-            } else {
+            otpCandidates = Array(OTPInbox.availableCandidates().prefix(3))
+            if otpCandidates.isEmpty {
                 setCandidates(["Paste OTP", "Next keyboard"])
+            } else {
+                setCandidates(otpCandidates.map { "\($0.title)  \($0.code)" })
             }
             return
         }
