@@ -4,6 +4,15 @@ Native iPhone keyboard with English, phonetic Bangla, and Bangla layouts, plus a
 
 A native iOS custom keyboard and separate Windows companion. The app is a new project, not a Drift dependency.
 
+## Touch reliability and symbol pages
+
+- Fixed missed letters after the system edge gate swallowed a touch's end: the key stayed latched and silently ate its next press. Keys are now released from the root monitor too, every new finger is treated as a new press, and stale finger entries are cleared.
+- Removed finger-roll "recovery", which typed a second letter whenever a tap drifted onto a neighbor before lifting. Movement while a finger is down never types.
+- Row edges (left of A, right of L, beside Shift/Delete) now type the nearest key instead of dropping the touch.
+- Shift acts on finger-down, so pressing a letter before lifting Shift capitalizes it.
+- The root touch monitor stays live while any finger is down, so overlapping fast taps keep their early routing.
+- Symbol pages now match iOS: 123 page (#+= toggle) and #+= page with brackets, currency and a 123 toggle back. Punctuation types on finger-down, and there is a single Delete.
+
 ## Whole keyboard glass
 
 - Native `UIGlassEffect` now covers the entire keyboard and settings surface, including when **Keycaps: None** is selected. Keycap removal still removes every individual key fill, border, shadow and material.

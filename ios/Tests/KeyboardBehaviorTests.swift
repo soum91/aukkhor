@@ -288,24 +288,64 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         }
     }
 
-    func testAncestorMoveRescueDoesNotDoubleInsert() {
+    func testStaleTrackedTouchCannotSwallowTheNextPress() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
         host.directTouchRoutingEnabled = true
         var inserted: [String] = []
-        for (label, x) in [("q", CGFloat(20)), ("w", CGFloat(73))] {
-            let key = KeyboardButton(type: .custom)
-            key.accessibilityLabel = label
-            key.insertsOnTouchDown = true
-            key.frame = CGRect(x: x, y: 20, width: 45, height: 45)
-            key.addAction(UIAction { _ in inserted.append(label) }, for: .touchDown)
-            host.addSubview(key)
-        }
-        let touch = ObjectIdentifier(NSObject())
-        XCTAssertNotNil(host.beginTrackedDirectKey(for: touch, at: CGPoint(x: 42, y: 42), early: true))
-        host.advanceTrackedDirectKey(for: touch, at: CGPoint(x: 95, y: 42))
-        host.advanceTrackedDirectKey(for: touch, at: CGPoint(x: 95, y: 42))
-        XCTAssertEqual(inserted, ["q", "w"])
-        XCTAssertEqual(host.movementRecoveryCount, 1)
+        let key = KeyboardButton(type: .custom)
+        key.accessibilityLabel = "q"
+        key.insertsOnTouchDown = true
+        key.frame = CGRect(x: 20, y: 20, width: 45, height: 45)
+        key.addAction(UIAction { [weak key] _ in
+            guard let key, !key.immediateActionTriggered else { return }
+            key.immediateActionTriggered = true
+            inserted.append("q")
+        }, for: .touchDown)
+        host.addSubview(key)
+        let center = CGPoint(x: 42, y: 42)
+        let first = NSObject(), second = NSObject()
+        // First press: its end is never delivered (system gate swallowed it).
+        XCTAssertNotNil(host.beginTrackedDirectKey(for: ObjectIdentifier(first), at: center))
+        // Next finger on the same key must still type.
+        XCTAssertNotNil(host.beginTrackedDirectKey(for: ObjectIdentifier(second), at: center))
+        XCTAssertEqual(inserted, ["q", "q"])
+    }
+
+    func testRootMonitorReleaseIsIdempotentWithViewRelease() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        let key = KeyboardButton(type: .custom)
+        key.accessibilityLabel = "p"
+        key.insertsOnTouchDown = true
+        key.frame = CGRect(x: 20, y: 20, width: 45, height: 45)
+        var released = 0
+        key.addAction(UIAction { _ in released += 1 }, for: .touchUpInside)
+        host.addSubview(key)
+        let id = ObjectIdentifier(NSObject())
+        let center = CGPoint(x: 42, y: 42)
+        host.beginTrackedDirectKey(for: id, at: center, early: true)
+        host.finishTrackedDirectKey(for: id, at: center)
+        host.finishTrackedDirectKey(for: id, at: center)
+        XCTAssertEqual(released, 1)
+        XCTAssertEqual(host.activeTouchCount, 0)
+    }
+
+    func testRowEdgeGapTypesNearestKeyInsteadOfDroppingTouch() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        host.touchExpansion = 6
+        let a = KeyboardButton(type: .custom)
+        a.accessibilityLabel = "a"
+        a.insertsOnTouchDown = true
+        a.frame = CGRect(x: 30, y: 20, width: 34, height: 44)
+        host.addSubview(a)
+        var inserted = 0
+        a.addAction(UIAction { _ in inserted += 1 }, for: .touchDown)
+        // 18pt left of "a": beyond the hit expansion but in the row's edge inset.
+        XCTAssertTrue(host.beginDirectKey(at: CGPoint(x: 12, y: 40)) === a)
+        XCTAssertEqual(inserted, 1)
+        // Far below the row stays empty.
+        XCTAssertNil(host.beginDirectKey(at: CGPoint(x: 8, y: 95)))
     }
 
     func testDirectTouchRoutingInsertsOnContactOnceAndSupportsSensitivity() {
@@ -370,39 +410,69 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertTrue(host.hitTest(point, with: nil) === space)
         XCTAssertNil(host.beginDirectKey(at: point), "The caret long press must stay on Space")
     }
-    func testFingerRolloverRecoversNeighboringLettersWithoutRepeatOrGapNoise() {
+    func testFingerMovementNeverTypesAGhostLetter() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
         host.directTouchRoutingEnabled = true
         host.touchExpansion = 10
         var inserted: [String] = []
-        let q = KeyboardButton(type: .custom)
-        q.accessibilityLabel = "q"
-        q.insertsOnTouchDown = true
-        q.frame = CGRect(x: 20, y: 20, width: 45, height: 45)
-        q.addAction(UIAction { _ in inserted.append("q") }, for: .touchDown)
-        host.addSubview(q)
-        let w = KeyboardButton(type: .custom)
-        w.accessibilityLabel = "w"
-        w.insertsOnTouchDown = true
-        w.frame = CGRect(x: 73, y: 20, width: 45, height: 45)
-        w.addAction(UIAction { _ in inserted.append("w") }, for: .touchDown)
-        host.addSubview(w)
-
-        let qCenter = CGPoint(x: 42, y: 42)
-        let wCenter = CGPoint(x: 95, y: 42)
-        let initial = host.beginDirectKey(at: qCenter)
-        XCTAssertTrue(initial === q)
-        XCTAssertTrue(host.transitionDirectKey(from: initial,
-                                               to: CGPoint(x: 67, y: 42)) === q,
-                      "Overlapping expansion regions must not add extra letters")
+        for (label, x) in [("q", CGFloat(20)), ("w", CGFloat(73))] {
+            let key = KeyboardButton(type: .custom)
+            key.accessibilityLabel = label
+            key.insertsOnTouchDown = true
+            key.frame = CGRect(x: x, y: 20, width: 45, height: 45)
+            key.addAction(UIAction { _ in inserted.append(label) }, for: .touchDown)
+            host.addSubview(key)
+        }
+        let id = ObjectIdentifier(NSObject())
+        XCTAssertNotNil(host.beginTrackedDirectKey(for: id, at: CGPoint(x: 62, y: 42)))
+        // A sloppy tap that drifts into the neighbor before lifting.
+        host.touchesMoved([], with: nil)
+        host.finishTrackedDirectKey(for: id, at: CGPoint(x: 95, y: 42))
         XCTAssertEqual(inserted, ["q"])
-        let next = host.transitionDirectKey(from: initial, to: wCenter)
-        XCTAssertTrue(next === w, "Rolling directly into the next letter must be rescued")
-        XCTAssertTrue(host.transitionDirectKey(from: next, to: wCenter) === w)
-        XCTAssertEqual(inserted, ["q", "w"])
-        XCTAssertEqual(host.movementRecoveryCount, 1)
-        if let next { host.endDirectKey(next, at: wCenter) }
-        XCTAssertEqual(inserted, ["q", "w"], "Lifting must never insert twice")
+    }
+
+    func testSymbolPagesToggleBothWaysLikeTheSystemKeyboard() throws {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingAllowTouchEvents = true
+        keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        func allButtons(_ view: UIView) -> [UIButton] {
+            (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { allButtons($0) }
+        }
+        func button(_ label: String) -> UIButton? {
+            allButtons(keyboard.view).first { $0.accessibilityLabel == label }
+        }
+        try XCTUnwrap(button("123")).sendActions(for: .touchUpInside)
+        XCTAssertNotNil(button("More symbols"))
+        XCTAssertNotNil(button("ABC"))
+        XCTAssertEqual(allButtons(keyboard.view).filter { $0.accessibilityLabel == "Delete" }.count, 1,
+                       "Symbol pages have exactly one Delete")
+        try XCTUnwrap(button("More symbols")).sendActions(for: .touchUpInside)
+        XCTAssertNotNil(button("["))
+        XCTAssertNotNil(button("€"))
+        let back = try XCTUnwrap(button("Numbers"), "The #+= page must offer a way back to 123")
+        back.sendActions(for: .touchUpInside)
+        XCTAssertNotNil(button("1"))
+        XCTAssertNotNil(button("More symbols"))
+        try XCTUnwrap(button("?")).sendActions(for: .touchDown)
+        try XCTUnwrap(button("?")).sendActions(for: .touchUpInside)
+        XCTAssertEqual(proxy.text, "?", "Punctuation types once, on finger-down")
+        try XCTUnwrap(button("ABC")).sendActions(for: .touchUpInside)
+        XCTAssertNotNil(button("q"))
+    }
+
+    func testShiftActsOnFingerDownForRollover() throws {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingAllowTouchEvents = true
+        func allButtons(_ view: UIView) -> [UIButton] {
+            (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { allButtons($0) }
+        }
+        let shift = try XCTUnwrap(allButtons(keyboard.view).first { $0.accessibilityLabel == "Shift" })
+        shift.sendActions(for: .touchDown)
+        // Letter lands before Shift is lifted.
+        keyboard.testingTypeCharacter("h")
+        shift.sendActions(for: .touchUpInside)
+        keyboard.testingTypeCharacter("i")
+        XCTAssertEqual(proxy.text, "Hi")
     }
 
     func testKeyboardRequestsPublicEdgeGestureDeferral() {

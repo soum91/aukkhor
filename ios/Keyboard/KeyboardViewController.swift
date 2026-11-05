@@ -108,7 +108,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var touchDebuggerRunning = false
     private var touchSamples: [KeyboardTouchSample] = []
     private var rootTouchSamples: [KeyboardRootTouchSample] = []
-    private var debugStartMovementCount = 0
+    private var debugStartStaleCount = 0
     private var debugStartEarlyRoutedCount = 0
     private var debugProxyInsertions: [String] = []
     private var debugProxyTimes: [Int] = []
@@ -246,11 +246,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         rootTouchMonitor.onTouchBegan = { [weak self] touch in
             self?.handleRootTouchDown(touch)
         }
-        rootTouchMonitor.onTouchMoved = { [weak self] touch in
-            guard let self, touch.view === self.interactionHost,
-                  self.interactionHost.directTouchRoutingEnabled else { return }
-            self.interactionHost.advanceTrackedDirectKey(
-                for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost))
+        // Release the key from here too: if the host swallows the touch's end
+        // before it reaches the router, the key would otherwise stay latched.
+        rootTouchMonitor.onTouchEnded = { [weak self] touch, cancelled in
+            guard let self else { return }
+            self.interactionHost.finishTrackedDirectKey(
+                for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost),
+                cancelled: cancelled)
         }
         rootTouchMonitor.isEnabled = !isPreview
         NSLayoutConstraint.activate([
@@ -617,25 +619,48 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    private func addNativeSymbolsThirdRow() {
+    // Third symbol row, matching the system keyboard on both pages:
+    // [#+= or 123]  .  ,  ?  !  '  [delete]
+    private func addSymbolsThirdRow() {
         let row = UIStackView()
         row.axis = .horizontal
         row.spacing = KeyboardPreferences.keySpacing
         row.distribution = .fill
-        let toggle = makeButton("#+=", action: { [weak self] in
-            self?.symbolPage = 1
-            self?.buildKeys()
+        let morePage = symbolPage == 0
+        let toggle = makeButton(morePage ? "#+=" : "123", action: { [weak self] in
+            guard let self else { return }
+            self.symbolPage = morePage ? 1 : 0
+            self.buildKeys()
         })
-        toggle.accessibilityLabel = "More symbols"
-        toggle.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.12).isActive = true
+        toggle.accessibilityLabel = morePage ? "More symbols" : "Numbers"
+        toggle.titleLabel?.font = .systemFont(ofSize: 15)
+        KeyboardKeyAppearance.apply(to: toggle, palette: palette, secondary: true)
         row.addArrangedSubview(toggle)
+        let punctuation = UIStackView()
+        punctuation.axis = .horizontal
+        punctuation.distribution = .fillEqually
+        punctuation.spacing = KeyboardPreferences.keySpacing
         for symbol in [".", ",", "?", "!", "'"] {
-            row.addArrangedSubview(makeButton(symbol, action: { [weak self] in self?.type(symbol) }))
+            punctuation.addArrangedSubview(makeButton(symbol, action: { [weak self] in self?.type(symbol) },
+                                                      immediateInput: true))
         }
+        let leftGap = UIView(), rightGap = UIView()
+        row.addArrangedSubview(leftGap)
+        row.addArrangedSubview(punctuation)
+        row.addArrangedSubview(rightGap)
         let deleteKey = makeButton("⌫", action: { [weak self] in self?.backspace() })
         deleteKey.accessibilityLabel = "Delete"
-        deleteKey.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15).isActive = true
+        KeyboardKeyAppearance.apply(to: deleteKey, palette: palette, secondary: true)
         row.addArrangedSubview(deleteKey)
+        NSLayoutConstraint.activate([
+            toggle.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.15),
+            deleteKey.widthAnchor.constraint(equalTo: toggle.widthAnchor),
+            leftGap.widthAnchor.constraint(equalTo: rightGap.widthAnchor)
+        ])
+        // Narrow one-handed widths cannot fit the gaps; let them collapse.
+        let punctuationWidth = punctuation.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.62)
+        punctuationWidth.priority = UILayoutPriority(999)
+        punctuationWidth.isActive = true
         row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
         stack.addArrangedSubview(oneHandRow(row))
     }
@@ -643,9 +668,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func addThirdRow(_ chars: [String]) {
         let container = UIStackView()
         container.spacing = 0
+        // Shift acts on finger-down like the system keyboard. Fast typists
+        // press the letter before lifting Shift; on touch-up that letter
+        // was already typed in lowercase.
         let shiftKey = makeButton(capsLock ? "⇪" : "⇧", action: { [weak self] in
             self?.tapShift()
-        })
+        }, immediateInput: true)
         shiftKey.accessibilityLabel = "Shift"
         shiftButton = shiftKey
         let deleteKey = makeButton("⌫", action: { [weak self] in self?.backspace() })
@@ -826,14 +854,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } else if emojiMode {
             buildEmojiPanel()
         } else if symbols {
-            addChars(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
             if symbolPage == 0 {
+                addChars(["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"])
                 addChars(["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""])
-                addNativeSymbolsThirdRow()
             } else {
-                addChars(["@", "#", "$", "%", "&", "-", "+", "(", ")", "/"])
-                addChars(["*", "\"", ":", ";", "!", "?", "'", ",", ".", "_"])
+                addChars(["[", "]", "{", "}", "#", "%", "^", "*", "+", "="])
+                addChars(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"])
             }
+            addSymbolsThirdRow()
         } else if mode == .bangla {
             if KeyboardPreferences.numberRow { addChars(["১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯", "০"]) }
             if nativeSigns {
@@ -852,7 +880,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             addThirdRow("zxcvbnm".map { shift ? $0.uppercased() : String($0) })
         }
-        let needsEditingKeys = symbols || mode == .bangla || emojiMode || clipboardPanel || settingsPanel
+        // Symbol pages carry their own Delete in the third row, like iOS.
+        let needsEditingKeys = !symbols && (mode == .bangla || emojiMode || clipboardPanel || settingsPanel)
         var bottomControls: [(String, () -> Void)] = [
             (symbols ? "ABC" : "123", { [weak self] in
                 guard let self else { return }
@@ -869,7 +898,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if needsEditingKeys {
             bottomControls.insert(("⌫", { [weak self] in self?.backspace() }), at: 3)
         }
-        if mode == .bangla && !emojiMode && !clipboardPanel && !settingsPanel {
+        if mode == .bangla && !symbols && !emojiMode && !clipboardPanel && !settingsPanel {
             bottomControls.insert((nativeSigns ? "ব্যঞ্জন" : "স্বর", { [weak self] in
                 self?.nativeSigns.toggle(); self?.buildKeys()
             }), at: 1)
@@ -951,7 +980,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if touch.view === interactionHost, interactionHost.directTouchRoutingEnabled {
             let position = touch.location(in: interactionHost)
             interactionHost.beginTrackedDirectKey(
-                for: ObjectIdentifier(touch), at: position, early: true)
+                for: ObjectIdentifier(touch), at: position, early: true, touch: touch)
         }
         observeRootTouch(touch)
     }
@@ -984,7 +1013,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func startTouchDebugger() {
         clearTouchDebugger()
         touchDebuggerRunning = true
-        debugStartMovementCount = interactionHost.movementRecoveryCount
+        debugStartStaleCount = interactionHost.staleTouchRecoveryCount
         debugStartEarlyRoutedCount = interactionHost.earlyRootRoutedCount
         debugHapticRequests = 0
         debugVibrationRequests = 0
@@ -1043,7 +1072,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let maxInsert = debugProxyTimes.max() ?? 0
         let slowInserts = debugProxyTimes.filter { $0 > 30 }.count
         let gapHits = touchSamples.filter(\.usedGapRouting).count
-        let recoveredMoves = max(0, interactionHost.movementRecoveryCount - debugStartMovementCount)
+        let recoveredStale = max(0, interactionHost.staleTouchRecoveryCount - debugStartStaleCount)
         let earlyRouted = max(0, interactionHost.earlyRootRoutedCount - debugStartEarlyRoutedCount)
         let rootLetterTouches = rootTouchSamples.filter { $0.keyCandidate != nil }
         let rootSequence = rootLetterTouches.compactMap(\.keyCandidate).joined()
@@ -1069,7 +1098,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Estimated root letter touches not routed: \(rootOnlyEstimate)
         Max root touch delivery delay: \(maxRootDelivery) ms
         Gap-rescued touches: \(gapHits)
-        Finger-roll letters recovered: \(recoveredMoves)
+        Stale touches recovered: \(recoveredStale)
         Root-early-routed key presses: \(earlyRouted)
         Haptic enabled: \(typingOptions.haptics ? "yes" : "no")
         Haptic mode: \(typingOptions.hapticMode.title)
@@ -1195,7 +1224,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         touchDebugOverlay = nil
         touchSamples.removeAll()
         rootTouchSamples.removeAll()
-        debugStartMovementCount = 0
+        debugStartStaleCount = 0
         debugStartEarlyRoutedCount = 0
         debugHapticRequests = 0
         debugVibrationRequests = 0

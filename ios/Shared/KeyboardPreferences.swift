@@ -536,11 +536,32 @@ final class KeyboardInteractionView: UIView {
     // Opt-in, memory-only diagnostics. No logging or extra hit testing while
     // the debugger is off, and no key data is written to a shared container.
     var onTouchDiagnostic: ((CGPoint, String?, Int, Int, Bool) -> Void)?
-    private var trackedKeys: [ObjectIdentifier: KeyboardButton] = [:]
+
+    // One entry per live finger. The UITouch is held weakly: if UIKit never
+    // delivers an end/cancel for a finger (the system edge gate can swallow
+    // it), the entry is detected as stale instead of blocking the next touch
+    // that happens to reuse the same address.
+    private final class TrackedTouch {
+        weak var touch: UITouch?
+        let hasTouch: Bool
+        let key: KeyboardButton
+        init(touch: UITouch?, key: KeyboardButton) {
+            self.touch = touch
+            self.hasTouch = touch != nil
+            self.key = key
+        }
+        var isStale: Bool {
+            guard hasTouch else { return false }
+            guard let touch else { return true }
+            return touch.phase == .ended || touch.phase == .cancelled
+        }
+    }
+    private var trackedKeys: [ObjectIdentifier: TrackedTouch] = [:]
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
-    private(set) var movementRecoveryCount = 0
+    private(set) var staleTouchRecoveryCount = 0
     private(set) var earlyRootRoutedCount = 0
+    var activeTouchCount: Int { trackedKeys.count }
 
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         if let modalOverlay {
@@ -571,6 +592,12 @@ final class KeyboardInteractionView: UIView {
            key.bounds.contains(key.convert(point, from: self)) { return key }
         var nearest: UIButton?
         var nearestDistance = CGFloat.greatestFiniteMagnitude
+        // Row edges (left of "a", right of "l", beside Shift/Delete) have
+        // inset gaps wider than the hit expansion. The system keyboard types
+        // the closest key there instead of dropping the touch, so keep the
+        // closest same-row typing key as a fallback.
+        var rowFallback: UIButton?
+        var rowFallbackDistance = CGFloat.greatestFiniteMagnitude
         func visit(_ parent: UIView) {
             for child in parent.subviews where !child.isHidden && child.alpha > 0.01 && child.isUserInteractionEnabled {
                 if child.clipsToBounds && !child.bounds.contains(child.convert(point, from: self)) { continue }
@@ -581,16 +608,19 @@ final class KeyboardInteractionView: UIView {
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
                     let distance = dx * dx + dy * dy
                     // Use exactly the same acceptance bounds as the key.
-                    // Previously this routed touches that the key rejected.
                     if dx <= self.touchExpansion && dy <= self.touchExpansion && distance < nearestDistance {
                         nearest = key
                         nearestDistance = distance
+                    } else if dy == 0, let typing = key as? KeyboardButton, typing.insertsOnTouchDown,
+                              dx <= frame.width * 0.6, dx < rowFallbackDistance {
+                        rowFallback = typing
+                        rowFallbackDistance = dx
                     }
                 } else { visit(child) }
             }
         }
         visit(self)
-        return nearest ?? direct
+        return nearest ?? rowFallback ?? direct
     }
 
     @discardableResult
@@ -599,8 +629,10 @@ final class KeyboardInteractionView: UIView {
         guard directTouchRoutingEnabled,
               let key = resolvedHit(at: point, with: event) as? KeyboardButton,
               key.insertsOnTouchDown, key.accessibilityLabel != "Space" else { return nil }
-        // UIKit sends the paired touch-up only to the original key, even if
-        // the user's finger drifts into an adjacent hit expansion area.
+        // Every new finger on a key is a new press. A previous press whose
+        // touch-up never arrived must not leave the key latched and swallow
+        // this one.
+        key.immediateActionTriggered = false
         key.isHighlighted = true
         key.sendActions(for: .touchDown)
         routedTouchCount += 1
@@ -608,15 +640,25 @@ final class KeyboardInteractionView: UIView {
     }
 
     // An ancestor receives touches before UIKit necessarily dispatches them to
-    // the keyboard view. Claim that same touch here to avoid the ~150ms delay
-    // seen between root observation and letter delivery on edge keys. The
-    // later UIKit touchesBegan reuses the tracked key and cannot insert twice.
+    // the keyboard view. Claim that same touch here to avoid the delay seen
+    // between root observation and letter delivery on edge keys. The later
+    // UIKit touchesBegan reuses the tracked key and cannot insert twice.
     @discardableResult
     func beginTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
-                               early: Bool = false, event: UIEvent? = nil) -> KeyboardButton? {
-        if let existing = trackedKeys[touchID] { return existing }
+                               early: Bool = false, event: UIEvent? = nil,
+                               touch: UITouch? = nil) -> KeyboardButton? {
+        if let existing = trackedKeys[touchID] {
+            let sameTouch = touch == nil || existing.touch === touch
+            if sameTouch && !existing.isStale { return existing.key }
+            // Leftover from a finger whose end never reached us.
+            trackedKeys.removeValue(forKey: touchID)
+            existing.key.isHighlighted = false
+            existing.key.immediateActionTriggered = false
+            staleTouchRecoveryCount += 1
+        }
+        sweepStaleTouches()
         guard let key = beginDirectKey(at: point, event: event) else { return nil }
-        trackedKeys[touchID] = key
+        trackedKeys[touchID] = TrackedTouch(touch: touch, key: key)
         if early { earlyRootRoutedCount += 1 }
         return key
     }
@@ -627,48 +669,27 @@ final class KeyboardInteractionView: UIView {
         key.sendActions(for: cancelled ? .touchCancel : (within ? .touchUpInside : .touchUpOutside))
     }
 
-    // Fast typing often includes short finger rolls rather than a clean lift
-    // between every neighboring key. Route those movements to the next letter
-    // instead of cancelling the entire touch when it leaves the first cap.
-    // Only a new key's inner bounds can trigger another letter, so expanded
-    // overlapping hit areas never turn a tiny finger wobble into a duplicate.
-    @discardableResult
-    func transitionDirectKey(from current: KeyboardButton?, to point: CGPoint,
-                             event: UIEvent? = nil) -> KeyboardButton? {
-        guard directTouchRoutingEnabled else { return current }
-        if let current {
-            let localPoint = current.convert(point, from: self)
-            if current.bounds.insetBy(dx: -2, dy: -2).contains(localPoint) { return current }
-        }
-        guard let candidate = resolvedHit(at: point, with: event) as? KeyboardButton,
-              candidate.insertsOnTouchDown, candidate !== current,
-              let label = candidate.accessibilityLabel,
-              label.count == 1, label.first?.isLetter == true else { return current }
-        let inside = candidate.convert(point, from: self)
-        guard candidate.bounds.insetBy(dx: 2, dy: 2).contains(inside) else { return current }
-        if let current { endDirectKey(current, at: point, cancelled: true) }
-        candidate.isHighlighted = true
-        candidate.sendActions(for: .touchDown)
-        routedTouchCount += 1
-        movementRecoveryCount += 1
-        return candidate
+    // Release a tracked finger. Safe to call from both the root monitor and
+    // this view's own touch callbacks; only the first call does anything.
+    func finishTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
+                                cancelled: Bool = false) {
+        guard let tracked = trackedKeys.removeValue(forKey: touchID) else { return }
+        endDirectKey(tracked.key, at: point, cancelled: cancelled)
     }
 
-    // The ancestor monitor receives movement before the extension host may
-    // deliver it to this view. Reuse the same touch identity so a finger roll
-    // can be recovered once, without a second insertion on deferred delivery.
-    func advanceTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
-                                 event: UIEvent? = nil) {
-        guard let current = trackedKeys[touchID] else { return }
-        if let next = transitionDirectKey(from: current, to: point, event: event) {
-            trackedKeys[touchID] = next
+    private func sweepStaleTouches() {
+        for (id, tracked) in trackedKeys where tracked.isStale {
+            trackedKeys.removeValue(forKey: id)
+            tracked.key.isHighlighted = false
+            tracked.key.sendActions(for: .touchCancel)
+            staleTouchRecoveryCount += 1
         }
     }
 
     func cancelActiveTouches() {
-        for key in trackedKeys.values {
-            key.isHighlighted = false
-            key.sendActions(for: .touchCancel)
+        for tracked in trackedKeys.values {
+            tracked.key.isHighlighted = false
+            tracked.key.sendActions(for: .touchCancel)
         }
         trackedKeys.removeAll()
     }
@@ -680,7 +701,7 @@ final class KeyboardInteractionView: UIView {
             let started = tracing ? ProcessInfo.processInfo.systemUptime : 0
             let initiallyHit = tracing ? super.hitTest(position, with: event) : nil
             let key = beginTrackedDirectKey(for: ObjectIdentifier(touch),
-                                            at: position, event: event)
+                                            at: position, event: event, touch: touch)
             if let observer = onTouchDiagnostic {
                 let finished = ProcessInfo.processInfo.systemUptime
                 let deliveryMs = Int(max(0, min(10_000, (started - touch.timestamp) * 1_000)))
@@ -692,56 +713,59 @@ final class KeyboardInteractionView: UIView {
         }
     }
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
-            advanceTrackedDirectKey(for: ObjectIdentifier(touch),
-                                    at: touch.location(in: self), event: event)
-            // Preserve a key that has already inserted its letter when a
-            // finger briefly travels through the gap. Release on lift; a
-            // later movement into another key's center can still be rescued.
-        }
-    }
+    // A finger that wobbles or drifts onto a neighbor while held is still the
+    // same press. Typing a second letter here produced ghost characters on
+    // sloppy taps, so movement never inserts anything.
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {}
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            guard let key = trackedKeys.removeValue(forKey: ObjectIdentifier(touch)) else { continue }
-            endDirectKey(key, at: touch.location(in: self))
+            finishTrackedDirectKey(for: ObjectIdentifier(touch), at: touch.location(in: self))
         }
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            guard let key = trackedKeys.removeValue(forKey: ObjectIdentifier(touch)) else { continue }
-            endDirectKey(key, at: touch.location(in: self), cancelled: true)
+            finishTrackedDirectKey(for: ObjectIdentifier(touch), at: touch.location(in: self),
+                                   cancelled: true)
         }
     }
 }
 
-// Observes touch-downs at the root without taking over UIKit's touch stream.
-// In live keyboards it routes character touches early. Only opt-in debugging
-// records sample details; no keystroke history is retained during normal use.
+// Observes touches at the root without taking over UIKit's touch stream.
+// In live keyboards it routes character touches early, and it also releases
+// them: when the system edge gate swallows a touch, the key view may never
+// see its end, and that used to latch the key so its next press was lost.
 final class KeyboardRootTouchMonitor: UIGestureRecognizer {
     var onTouchBegan: ((UITouch) -> Void)?
-    var onTouchMoved: ((UITouch) -> Void)?
+    var onTouchEnded: ((UITouch, Bool) -> Void)?
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesBegan(touches, with: event)
         for touch in touches { onTouchBegan?(touch) }
     }
 
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
-        super.touchesMoved(touches, with: event)
-        for touch in touches { onTouchMoved?(touch) }
-    }
-
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesEnded(touches, with: event)
-        if numberOfTouches == 0 { state = .failed }
+        for touch in touches { onTouchEnded?(touch, false) }
+        finishIfIdle(event)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesCancelled(touches, with: event)
-        state = .cancelled
+        for touch in touches { onTouchEnded?(touch, true) }
+        finishIfIdle(event)
+    }
+
+    // Stay in .possible while any finger is down so overlapping (rollover)
+    // touches keep arriving here. Failing early stopped delivery of every
+    // later finger until all were lifted. A recognizer can only move from
+    // .possible to .failed, never directly to .cancelled.
+    private func finishIfIdle(_ event: UIEvent) {
+        let live = event.allTouches?.contains { touch in
+            touch.phase != .ended && touch.phase != .cancelled
+        } ?? false
+        if !live { state = .failed }
     }
 
     override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool { false }
