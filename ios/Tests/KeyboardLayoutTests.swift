@@ -422,6 +422,10 @@ private final class KeyboardHostField: UITextField {
             $0.accessibilityIdentifier?.hasPrefix("keyboard.candidate.") == true
         }
         XCTAssertEqual(candidateButtons.count, 3)
+        // Let the keyboard's own deferred context refresh (scheduled at load,
+        // reading the empty field) land first; otherwise it correctly clears
+        // the manual requests below and the test races it.
+        try await Task.sleep(for: .milliseconds(400))
         keyboard.requestSuggestions(prefix: "he", phonetic: false, bangla: false)
         for _ in 0..<100 {
             if candidateButtons.contains(where: { $0.title(for: .normal) == "hello" }) { break }
