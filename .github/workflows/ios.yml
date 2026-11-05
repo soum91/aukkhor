@@ -54,7 +54,7 @@ jobs:
       - name: Compile app and embedded keyboard
         run: |
           set -euo pipefail
-          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' build
+          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorDerived" CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION='${{ github.run_number }}' MARKETING_VERSION='0.2.${{ github.run_number }}' build
           APP="$RUNNER_TEMP/AukkhorDerived/Build/Products/Release-iphoneos/Aukkhor.app"
           test -d "$APP/PlugIns/AukkhorKeyboard.appex"
           test ! -d "$APP/PlugIns/AukkhorShare.appex"
@@ -98,7 +98,7 @@ jobs:
               for name, info in [(host,root),(keyboard,ext)]:
                   assert str(info.get('CFBundleDisplayName','')).strip(), name
                   assert str(info.get('CFBundleVersion')) == os.environ['EXPECTED_BUILD'], (name, info.get('CFBundleVersion'))
-                  assert info.get('CFBundleShortVersionString') == '0.2.0', (name, info.get('CFBundleShortVersionString'))
+                  assert info.get('CFBundleShortVersionString') == '0.2.' + os.environ['EXPECTED_BUILD'], (name, info.get('CFBundleShortVersionString'))
               print('Validated exactly one embedded keyboard extension')
           PY
       # Explicit one-off publication at the owner's request. Normal pushes still run both test stages.

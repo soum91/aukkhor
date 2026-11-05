@@ -37,7 +37,7 @@ def main() -> None:
     args = parser.parse_args()
     validate_ipa(args.ipa)
     validate_ipa(args.compat)
-    version = f"0.2.0.{args.build}"
+    version = f"0.2.{args.build}"
     if args.mode == "direct":
         prefix = f"{BASE}/downloads/v{version}"
     else:

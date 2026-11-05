@@ -54,7 +54,8 @@ def inspect(path, expected_build):
                 raise SystemExit(f"Missing display name in {label}")
             if str(info.get("CFBundleVersion")) != str(expected_build):
                 raise SystemExit(f"Unexpected {label} build number in IPA: {info.get('CFBundleVersion')}")
-            if info.get("CFBundleShortVersionString") != "0.2.0":
+            # FlareStore compares x.y.z only, so the build number is the patch.
+            if info.get("CFBundleShortVersionString") != f"0.2.{expected_build}":
                 raise SystemExit(f"Unexpected {label} marketing version in IPA")
         print("Verified host + keyboard extension only; no Share extension")
 
@@ -66,7 +67,7 @@ def main():
     parser.add_argument("--changelog", type=Path,
                         help="Plain-text changelog for this build (one change per line)")
     args = parser.parse_args()
-    version = f"0.2.0.{args.build}"
+    version = f"0.2.{args.build}"
     IPA = ipa_name(version)
     # Feed versions must distinguish builds; IPA Info.plist keeps its own marketing version.
     inspect(args.directory / IPA, args.build)

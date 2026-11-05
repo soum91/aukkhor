@@ -57,14 +57,14 @@ jobs:
           set -euo pipefail
           test -s dist/Aukkhor-unsigned.ipa
           test -s dist/Aukkhor-compat-unsigned.ipa
-          TAG="v0.2.0.$BUILD"
+          TAG="v0.2.$BUILD"
           MODE=direct
           if gh release view "$TAG" >/dev/null 2>&1; then
             if gh release upload "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa --clobber; then
               MODE=release
             fi
           elif gh release create "$TAG" dist/Aukkhor-unsigned.ipa dist/Aukkhor-compat-unsigned.ipa \
-            --target "$SHA" --prerelease --title "Aukkhor 0.2.0.$BUILD preview" \
+            --target "$SHA" --prerelease --title "Aukkhor 0.2.$BUILD preview" \
             --notes "Unsigned iPhone builds. The compatibility IPA omits shared App Group/Keychain entitlements. Sign the main app and embedded extensions with the same Apple signing identity."; then
             MODE=release
           fi
@@ -80,7 +80,7 @@ jobs:
           MODE: ${{ steps.distribution.outputs.mode }}
         run: |
           set -euo pipefail
-          python3 scripts/update_feed.py --version "0.2.0.$BUILD" --build-number "$BUILD" --ipa dist/Aukkhor-unsigned.ipa
+          python3 scripts/update_feed.py --version "0.2.$BUILD" --build-number "$BUILD" --ipa dist/Aukkhor-unsigned.ipa
           python3 scripts/repoint_feed.py --build "$BUILD" --mode "$MODE" \
             --ipa dist/Aukkhor-unsigned.ipa --compat dist/Aukkhor-compat-unsigned.ipa
           git config user.name "github-actions[bot]"
@@ -89,13 +89,13 @@ jobs:
           if [ "$MODE" = direct ]; then
             # The repository deliberately ignores *.ipa for ordinary development.
             # Publish only these two verified binary artifacts, explicitly.
-            git add -f "downloads/v0.2.0.$BUILD/Aukkhor-unsigned.ipa" \
-              "downloads/v0.2.0.$BUILD/Aukkhor-compat-unsigned.ipa"
-            git ls-files --error-unmatch "downloads/v0.2.0.$BUILD/Aukkhor-unsigned.ipa"
-            git ls-files --error-unmatch "downloads/v0.2.0.$BUILD/Aukkhor-compat-unsigned.ipa"
+            git add -f "downloads/v0.2.$BUILD/Aukkhor-unsigned.ipa" \
+              "downloads/v0.2.$BUILD/Aukkhor-compat-unsigned.ipa"
+            git ls-files --error-unmatch "downloads/v0.2.$BUILD/Aukkhor-unsigned.ipa"
+            git ls-files --error-unmatch "downloads/v0.2.$BUILD/Aukkhor-compat-unsigned.ipa"
           fi
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "catalog: publish verified Aukkhor 0.2.0.$BUILD ($MODE)"
+          git commit -m "catalog: publish verified Aukkhor 0.2.$BUILD ($MODE)"
           for attempt in 1 2 3; do
             git fetch origin main
             git rebase origin/main

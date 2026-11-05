@@ -76,14 +76,14 @@ jobs:
         run: |
           set -euo pipefail
           test -s dist/Aukkhor-unsigned.ipa
-          mv dist/Aukkhor-unsigned.ipa "dist/Aukkhor-0.2.0.$BUILD.ipa"
+          mv dist/Aukkhor-unsigned.ipa "dist/Aukkhor-0.2.$BUILD.ipa"
       - name: Write changelog from commits since the previous release
         env:
           BUILD: ${{ steps.build.outputs.number }}
           SHA: ${{ steps.build.outputs.sha }}
         run: |
           set -euo pipefail
-          PREV=$(git tag -l 'v0.2.0.*' --sort=-v:refname | grep -vx "v0.2.0.$BUILD" | head -1 || true)
+          PREV=$(git tag -l 'v0.2.*' --sort=-v:refname | grep -vx "v0.2.$BUILD" | head -1 || true)
           RANGE="$SHA"
           if [ -n "$PREV" ]; then RANGE="$PREV..$SHA"; fi
           git log --no-merges --format='%s' "$RANGE" -- ios scripts .github/workflows/ios.yml \
@@ -93,12 +93,12 @@ jobs:
           fi
           test -s dist/CHANGELOG.txt || echo "Aukkhor keyboard build $BUILD" > dist/CHANGELOG.txt
           {
-            echo "## Aukkhor 0.2.0.$BUILD"
+            echo "## Aukkhor 0.2.$BUILD"
             echo
             echo "### Changes"
             sed 's/^/- /' dist/CHANGELOG.txt
             echo
-            echo "Unsigned IPA \`Aukkhor-0.2.0.$BUILD.ipa\`: sign the host app and keyboard extension together."
+            echo "Unsigned IPA \`Aukkhor-0.2.$BUILD.ipa\`: sign the host app and keyboard extension together."
           } > dist/RELEASE_NOTES.md
           cat dist/RELEASE_NOTES.md
       - name: Validate host and keyboard extension
@@ -114,8 +114,8 @@ jobs:
           SHA: ${{ steps.build.outputs.sha }}
         run: |
           set -euo pipefail
-          TAG="v0.2.0.$BUILD"
-          IPA="dist/Aukkhor-0.2.0.$BUILD.ipa"
+          TAG="v0.2.$BUILD"
+          IPA="dist/Aukkhor-0.2.$BUILD.ipa"
           MODE=direct
           if gh release view "$TAG" >/dev/null 2>&1; then
             if gh release upload "$TAG" "$IPA" --clobber \
@@ -123,7 +123,7 @@ jobs:
               MODE=release
             fi
           elif gh release create "$TAG" "$IPA" --target "$SHA" --prerelease \
-              --title "Aukkhor 0.2.0.$BUILD" --notes-file dist/RELEASE_NOTES.md; then
+              --title "Aukkhor 0.2.$BUILD" --notes-file dist/RELEASE_NOTES.md; then
             MODE=release
           fi
           if [ "$MODE" = direct ]; then
@@ -143,11 +143,11 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add repo.json source.json aukkhor-keyboard-v17.json
           if [ "$MODE" = direct ]; then
-            git add -f "downloads/v0.2.0.$BUILD/"*.ipa
-            test -f "downloads/v0.2.0.$BUILD/Aukkhor-0.2.0.$BUILD.ipa"
+            git add -f "downloads/v0.2.$BUILD/"*.ipa
+            test -f "downloads/v0.2.$BUILD/Aukkhor-0.2.$BUILD.ipa"
           fi
           git diff --cached --quiet && exit 0
-          git commit -m "catalog: publish only Aukkhor keyboard 0.2.0.$BUILD"
+          git commit -m "catalog: publish only Aukkhor keyboard 0.2.$BUILD"
           for attempt in 1 2 3; do
             git fetch origin main
             git rebase origin/main

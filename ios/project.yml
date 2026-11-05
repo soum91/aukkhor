@@ -8,6 +8,7 @@ settings:
     SWIFT_VERSION: '5.9'
     TARGETED_DEVICE_FAMILY: '1,2'
     CODE_SIGN_STYLE: Manual
+    # CI overrides this with 0.2.<build>; FlareStore only compares x.y.z.
     MARKETING_VERSION: 0.2.0
     CURRENT_PROJECT_VERSION: '1'
     ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS: NO
