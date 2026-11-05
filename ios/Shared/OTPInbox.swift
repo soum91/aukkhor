@@ -33,7 +33,7 @@ enum OTPInbox {
             candidates.append(Candidate(title: "SMS", code: sms.code,
                                         expiresAt: sms.expiresAt, temporarySMS: true))
         }
-        guard let data = try? Data(contentsOf: totpURL),
+        guard let totpURL, let data = try? Data(contentsOf: totpURL),
               let entries = try? JSONDecoder().decode([CachedTOTP].self, from: data) else {
             return candidates
         }
@@ -49,13 +49,13 @@ enum OTPInbox {
         if candidate.temporarySMS {
             guard let sms = readSMS(), sms.code == candidate.code,
                   sms.expiresAt > Date() else { return nil }
-            try? FileManager.default.removeItem(at: smsURL)
+            if let smsURL { try? FileManager.default.removeItem(at: smsURL) }
         }
         return candidate.code
     }
 
     private static func readSMS() -> Envelope? {
-        guard let data = try? Data(contentsOf: smsURL),
+        guard let smsURL, let data = try? Data(contentsOf: smsURL),
               let envelope = try? JSONDecoder().decode(Envelope.self, from: data) else { return nil }
         guard envelope.expiresAt > Date() else {
             try? FileManager.default.removeItem(at: smsURL)
@@ -67,10 +67,12 @@ enum OTPInbox {
     private static var folder: URL? {
         FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)
     }
-    private static var smsURL: URL {
-        folder!.appendingPathComponent("otp-inbox-v1.json", isDirectory: false)
+    // Sideload signers can strip the App Group; then there is no inbox.
+    // Never crash the keyboard over it.
+    private static var smsURL: URL? {
+        folder?.appendingPathComponent("otp-inbox-v1.json", isDirectory: false)
     }
-    private static var totpURL: URL {
-        folder!.appendingPathComponent("totp-codes-v1.json", isDirectory: false)
+    private static var totpURL: URL? {
+        folder?.appendingPathComponent("totp-codes-v1.json", isDirectory: false)
     }
 }
