@@ -337,6 +337,34 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(inserted, 2)
     }
 
+    func testMergedSecondFingerTypesButDriftDoesNot() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        var inserted: [String] = []
+        for (label, x) in [("s", CGFloat(20)), ("d", CGFloat(60))] {
+            let key = KeyboardButton(type: .custom)
+            key.accessibilityLabel = label
+            key.insertsOnTouchDown = true
+            key.frame = CGRect(x: x, y: 20, width: 34, height: 44)
+            key.addAction(UIAction { _ in inserted.append(label) }, for: .touchDown)
+            host.addSubview(key)
+        }
+        let id = ObjectIdentifier(NSObject())
+        host.beginTrackedDirectKey(for: id, at: CGPoint(x: 37, y: 42))
+        // Gradual drift across the border: same press.
+        host.recoverMergedFinger(for: id, at: CGPoint(x: 52, y: 42), previous: CGPoint(x: 46, y: 42))
+        host.recoverMergedFinger(for: id, at: CGPoint(x: 64, y: 42), previous: CGPoint(x: 52, y: 42))
+        XCTAssertEqual(inserted, ["s"])
+        // A second finger merged into this touch: one sample jumps a key.
+        let other = ObjectIdentifier(NSObject())
+        host.beginTrackedDirectKey(for: other, at: CGPoint(x: 37, y: 42))
+        host.recoverMergedFinger(for: other, at: CGPoint(x: 77, y: 42), previous: CGPoint(x: 38, y: 42))
+        host.recoverMergedFinger(for: other, at: CGPoint(x: 78, y: 42), previous: CGPoint(x: 77, y: 42))
+        host.finishTrackedDirectKey(for: other, at: CGPoint(x: 78, y: 42))
+        XCTAssertEqual(inserted, ["s", "s", "d"])
+        XCTAssertEqual(host.mergedFingerRecoveryCount, 1)
+    }
+
     func testRootMonitorReleaseIsIdempotentWithViewRelease() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
         host.directTouchRoutingEnabled = true

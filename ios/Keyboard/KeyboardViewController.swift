@@ -250,6 +250,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         // Release the key from here too: if the host swallows the touch's end
         // before it reaches the router, the key would otherwise stay latched.
+        rootTouchMonitor.onTouchMoved = { [weak self] touch in
+            guard let self, self.interactionHost.directTouchRoutingEnabled else { return }
+            self.interactionHost.recoverMergedFinger(
+                for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost),
+                previous: touch.previousLocation(in: self.interactionHost))
+        }
         rootTouchMonitor.onTouchEnded = { [weak self] touch, cancelled in
             guard let self else { return }
             self.interactionHost.finishTrackedDirectKey(
@@ -1109,6 +1115,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Gap-rescued touches: \(gapHits)
         Stale touches recovered: \(recoveredStale)
         Late duplicate deliveries blocked: \(interactionHost.lateDuplicateCount)
+        Merged-finger letters recovered: \(interactionHost.mergedFingerRecoveryCount)
         Root-early-routed key presses: \(earlyRouted)
         Haptic enabled: \(typingOptions.haptics ? "yes" : "no")
         Haptic mode: \(typingOptions.hapticMode.title)

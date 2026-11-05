@@ -562,11 +562,18 @@ final class KeyboardInteractionView: UIView {
     // that late touchesBegan must not count as a second press.
     private final class FinishedTouch {
         weak var touch: UITouch?
+        let endedAt: TimeInterval
         let at: TimeInterval
-        init(touch: UITouch?, at: TimeInterval) { self.touch = touch; self.at = at }
+        init(touch: UITouch?, endedAt: TimeInterval, at: TimeInterval) {
+            self.touch = touch; self.endedAt = endedAt; self.at = at
+        }
     }
     private var finishedTouches: [ObjectIdentifier: FinishedTouch] = [:]
     private(set) var lateDuplicateCount = 0
+    private(set) var mergedFingerRecoveryCount = 0
+    // Distance one touch sample must jump to count as a second finger that
+    // iOS merged into the first. Real drift moves a few points per sample.
+    var mergedFingerJump: CGFloat = 18
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
     private(set) var staleTouchRecoveryCount = 0
@@ -659,7 +666,12 @@ final class KeyboardInteractionView: UIView {
                                touch: UITouch? = nil) -> KeyboardButton? {
         if let finished = finishedTouches[touchID] {
             let now = ProcessInfo.processInfo.systemUptime
-            if finished.touch != nil, finished.touch === touch, now - finished.at < 1.5 {
+            // UIKit reuses UITouch objects, so identity alone is not enough.
+            // A late redelivery still carries its original touch-down time,
+            // which is no later than when that touch ended; a new finger
+            // reusing the object always starts after it.
+            if let touch, finished.touch === touch, now - finished.at < 1.5,
+               touch.timestamp <= finished.endedAt {
                 lateDuplicateCount += 1
                 return nil
             }
@@ -695,9 +707,30 @@ final class KeyboardInteractionView: UIView {
         if let touch = tracked.touch {
             let now = ProcessInfo.processInfo.systemUptime
             finishedTouches = finishedTouches.filter { $0.value.touch != nil && now - $0.value.at < 1.5 }
-            finishedTouches[touchID] = FinishedTouch(touch: touch, at: now)
+            finishedTouches[touchID] = FinishedTouch(touch: touch, endedAt: touch.timestamp, at: now)
         }
         endDirectKey(tracked.key, at: point, cancelled: cancelled)
+    }
+
+    // iOS sometimes reports a second finger landing right beside the first as
+    // the first touch jumping onto the neighbor, with no new touch-down. Treat
+    // only a sudden jump that lands well inside another key as a new press;
+    // gradual drift (a wobbly tap) never types.
+    func recoverMergedFinger(for touchID: ObjectIdentifier, at point: CGPoint, previous: CGPoint) {
+        guard directTouchRoutingEnabled, let tracked = trackedKeys[touchID],
+              tracked.key.accessibilityLabel != "Delete",
+              hypot(point.x - previous.x, point.y - previous.y) >= mergedFingerJump,
+              let target = resolvedHit(at: point, with: nil) as? KeyboardButton,
+              target !== tracked.key, target.insertsOnTouchDown,
+              target.accessibilityLabel != "Space",
+              target.bounds.insetBy(dx: 3, dy: 3).contains(target.convert(point, from: self))
+        else { return }
+        tracked.key.isHighlighted = false
+        tracked.key.sendActions(for: .touchCancel)
+        trackedKeys.removeValue(forKey: touchID)
+        guard let key = beginDirectKey(at: point) else { return }
+        trackedKeys[touchID] = TrackedTouch(touch: tracked.touch, key: key)
+        mergedFingerRecoveryCount += 1
     }
 
     private func sweepStaleTouches() {
@@ -737,10 +770,14 @@ final class KeyboardInteractionView: UIView {
         }
     }
 
-    // A finger that wobbles or drifts onto a neighbor while held is still the
-    // same press. Typing a second letter here produced ghost characters on
-    // sloppy taps, so movement never inserts anything.
-    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {}
+    // Drift onto a neighbor is still the same press; only a merged second
+    // finger (a sudden jump) types again.
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            recoverMergedFinger(for: ObjectIdentifier(touch), at: touch.location(in: self),
+                                previous: touch.previousLocation(in: self))
+        }
+    }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
@@ -763,6 +800,12 @@ final class KeyboardInteractionView: UIView {
 final class KeyboardRootTouchMonitor: UIGestureRecognizer {
     var onTouchBegan: ((UITouch) -> Void)?
     var onTouchEnded: ((UITouch, Bool) -> Void)?
+    var onTouchMoved: ((UITouch) -> Void)?
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        super.touchesMoved(touches, with: event)
+        for touch in touches { onTouchMoved?(touch) }
+    }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
         super.touchesBegan(touches, with: event)
