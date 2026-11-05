@@ -1592,9 +1592,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // never overwrite a newer word's suggestions.
     func requestSuggestions(prefix: String, phonetic: Bool, bangla: Bool) {
         let key = "\(phonetic):\(bangla):\(prefix)"
+        // An empty word always clears, even if the last request was also
+        // empty; otherwise stale candidates stayed up after deleting a word.
+        guard !prefix.isEmpty else { suggestionRequestKey = key; setCandidates([]); return }
         guard suggestionRequestKey != key else { return }
         suggestionRequestKey = key
-        guard !prefix.isEmpty else { setCandidates([]); return }
         let shortcuts = replacements
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let values = phonetic ? [PhoneticBangla.transliterate(prefix)]
