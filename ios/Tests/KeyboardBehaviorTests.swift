@@ -311,6 +311,32 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(inserted, ["q", "q"])
     }
 
+    func testLateViewDeliveryAfterEarlyReleaseDoesNotTypeTwice() {
+        // Edge keys: the root monitor presses and releases the touch, then
+        // UIKit delivers touchesBegan to the router 100+ ms late.
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
+        host.directTouchRoutingEnabled = true
+        let key = KeyboardButton(type: .custom)
+        key.accessibilityLabel = "p"
+        key.insertsOnTouchDown = true
+        key.frame = CGRect(x: 20, y: 20, width: 45, height: 45)
+        var inserted = 0
+        key.addAction(UIAction { _ in inserted += 1 }, for: .touchDown)
+        host.addSubview(key)
+        let touch = UITouch()
+        let id = ObjectIdentifier(touch)
+        let center = CGPoint(x: 42, y: 42)
+        host.beginTrackedDirectKey(for: id, at: center, early: true, touch: touch)
+        host.finishTrackedDirectKey(for: id, at: center)
+        XCTAssertNil(host.beginTrackedDirectKey(for: id, at: center, touch: touch))
+        XCTAssertEqual(inserted, 1)
+        XCTAssertEqual(host.lateDuplicateCount, 1)
+        // A genuinely new finger still types.
+        let next = UITouch()
+        host.beginTrackedDirectKey(for: ObjectIdentifier(next), at: center, touch: next)
+        XCTAssertEqual(inserted, 2)
+    }
+
     func testRootMonitorReleaseIsIdempotentWithViewRelease() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
         host.directTouchRoutingEnabled = true

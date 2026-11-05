@@ -557,6 +557,16 @@ final class KeyboardInteractionView: UIView {
         }
     }
     private var trackedKeys: [ObjectIdentifier: TrackedTouch] = [:]
+    // Touches already pressed and released through the early root path.
+    // Edge keys can reach this view 100+ ms late, after the finger lifted;
+    // that late touchesBegan must not count as a second press.
+    private final class FinishedTouch {
+        weak var touch: UITouch?
+        let at: TimeInterval
+        init(touch: UITouch?, at: TimeInterval) { self.touch = touch; self.at = at }
+    }
+    private var finishedTouches: [ObjectIdentifier: FinishedTouch] = [:]
+    private(set) var lateDuplicateCount = 0
     private(set) var receivedTouchCount = 0
     private(set) var routedTouchCount = 0
     private(set) var staleTouchRecoveryCount = 0
@@ -647,6 +657,14 @@ final class KeyboardInteractionView: UIView {
     func beginTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
                                early: Bool = false, event: UIEvent? = nil,
                                touch: UITouch? = nil) -> KeyboardButton? {
+        if let finished = finishedTouches[touchID] {
+            let now = ProcessInfo.processInfo.systemUptime
+            if finished.touch != nil, finished.touch === touch, now - finished.at < 1.5 {
+                lateDuplicateCount += 1
+                return nil
+            }
+            finishedTouches.removeValue(forKey: touchID)
+        }
         if let existing = trackedKeys[touchID] {
             let sameTouch = touch == nil || existing.touch === touch
             if sameTouch && !existing.isStale { return existing.key }
@@ -674,6 +692,11 @@ final class KeyboardInteractionView: UIView {
     func finishTrackedDirectKey(for touchID: ObjectIdentifier, at point: CGPoint,
                                 cancelled: Bool = false) {
         guard let tracked = trackedKeys.removeValue(forKey: touchID) else { return }
+        if let touch = tracked.touch {
+            let now = ProcessInfo.processInfo.systemUptime
+            finishedTouches = finishedTouches.filter { $0.value.touch != nil && now - $0.value.at < 1.5 }
+            finishedTouches[touchID] = FinishedTouch(touch: touch, at: now)
+        }
         endDirectKey(tracked.key, at: point, cancelled: cancelled)
     }
 
@@ -687,6 +710,7 @@ final class KeyboardInteractionView: UIView {
     }
 
     func cancelActiveTouches() {
+        finishedTouches.removeAll()
         for tracked in trackedKeys.values {
             tracked.key.isHighlighted = false
             tracked.key.sendActions(for: .touchCancel)
