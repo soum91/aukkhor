@@ -11,7 +11,9 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-IPA = "Aukkhor-unsigned.ipa"
+def ipa_name(version):
+    """Every published IPA carries its build number in the file name."""
+    return f"Aukkhor-{version}.ipa"
 HOST_ID = "dev.soum91.aukkhor"
 KEYBOARD_ID = "dev.soum91.aukkhor.keyboard"
 
@@ -61,10 +63,20 @@ def main():
     parser.add_argument("--build", required=True, type=int)
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--mode", required=True, choices=("release", "direct"))
+    parser.add_argument("--changelog", type=Path,
+                        help="Plain-text changelog for this build (one change per line)")
     args = parser.parse_args()
     version = f"0.2.0.{args.build}"
+    IPA = ipa_name(version)
     # Feed versions must distinguish builds; IPA Info.plist keeps its own marketing version.
     inspect(args.directory / IPA, args.build)
+    changelog = ""
+    if args.changelog and args.changelog.is_file():
+        lines = [line.strip().lstrip("-* ").strip()
+                 for line in args.changelog.read_text(encoding="utf-8").splitlines()]
+        changelog = " ".join(f"{line.rstrip('.')}." for line in lines if line)
+    if not changelog:
+        changelog = f"Aukkhor keyboard build {args.build}."
     prefix = (
         f"https://github.com/soum91/aukkhor/releases/download/v{version}"
         if args.mode == "release"
@@ -91,7 +103,7 @@ def main():
             "buildVersion": str(args.build),
             "date": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "localizedDescription": note,
-            "changelog": "Native-style QWERTY rows and wide Space; side tools follow one-handed layout; native Liquid Glass, removable backgrounds on every key, custom colors/opacity/spacing/height and real keyboard preview. Retains native text replacements, number row, emoji, OTP Shortcuts, Windows clipboard and direct TV typing. Host plus keyboard only.",
+            "changelog": changelog,
             "downloadURL": f"{prefix}/{IPA}",
             "size": (args.directory / IPA).stat().st_size,
             "minOSVersion": "16.0",

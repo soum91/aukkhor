@@ -59,6 +59,7 @@ jobs:
                   print(f"::warning::Publishing verified IPA from run {build} despite failed tests", file=sys.stderr)
               print(f"id={run_id}")
               print(f"number={build}")
+              print(f"sha={run['head_sha']}")
               break
           else:
               raise SystemExit("No compiled, audited Aukkhor IPA artifact found")
@@ -69,29 +70,65 @@ jobs:
           name: Aukkhor-iOS-unsigned-${{ steps.build.outputs.number }}
           github-token: ${{ github.token }}
           path: dist
+      - name: Name IPA with its build number
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+        run: |
+          set -euo pipefail
+          test -s dist/Aukkhor-unsigned.ipa
+          mv dist/Aukkhor-unsigned.ipa "dist/Aukkhor-0.2.0.$BUILD.ipa"
+      - name: Write changelog from commits since the previous release
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+          SHA: ${{ steps.build.outputs.sha }}
+        run: |
+          set -euo pipefail
+          PREV=$(git tag -l 'v0.2.0.*' --sort=-v:refname | grep -vx "v0.2.0.$BUILD" | head -1 || true)
+          RANGE="$SHA"
+          if [ -n "$PREV" ]; then RANGE="$PREV..$SHA"; fi
+          git log --no-merges --format='%s' "$RANGE" -- ios scripts .github/workflows/ios.yml \
+            | grep -viE '^(catalog:|chore\(feed\)|fix\(feed\))' | head -25 > dist/CHANGELOG.txt || true
+          if [ -z "$PREV" ] && [ "$(wc -l < dist/CHANGELOG.txt)" -gt 10 ]; then
+            head -10 dist/CHANGELOG.txt > dist/CHANGELOG.tmp && mv dist/CHANGELOG.tmp dist/CHANGELOG.txt
+          fi
+          test -s dist/CHANGELOG.txt || echo "Aukkhor keyboard build $BUILD" > dist/CHANGELOG.txt
+          {
+            echo "## Aukkhor 0.2.0.$BUILD"
+            echo
+            echo "### Changes"
+            sed 's/^/- /' dist/CHANGELOG.txt
+            echo
+            echo "Unsigned IPA \`Aukkhor-0.2.0.$BUILD.ipa\`: sign the host app and keyboard extension together."
+          } > dist/RELEASE_NOTES.md
+          cat dist/RELEASE_NOTES.md
       - name: Validate host and keyboard extension
         env:
           BUILD: ${{ steps.build.outputs.number }}
         run: |
-          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode release
+          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode release --changelog dist/CHANGELOG.txt
       - name: Publish only keyboard-enabled IPA
         id: distribution
         env:
           GH_TOKEN: ${{ github.token }}
           BUILD: ${{ steps.build.outputs.number }}
+          SHA: ${{ steps.build.outputs.sha }}
         run: |
           set -euo pipefail
           TAG="v0.2.0.$BUILD"
+          IPA="dist/Aukkhor-0.2.0.$BUILD.ipa"
           MODE=direct
           if gh release view "$TAG" >/dev/null 2>&1; then
-            if gh release upload "$TAG" \
-              dist/Aukkhor-unsigned.ipa --clobber; then
+            if gh release upload "$TAG" "$IPA" --clobber \
+              && gh release edit "$TAG" --notes-file dist/RELEASE_NOTES.md; then
               MODE=release
             fi
+          elif gh release create "$TAG" "$IPA" --target "$SHA" --prerelease \
+              --title "Aukkhor 0.2.0.$BUILD" --notes-file dist/RELEASE_NOTES.md; then
+            MODE=release
           fi
           if [ "$MODE" = direct ]; then
             mkdir -p "downloads/$TAG"
-            cp dist/Aukkhor-unsigned.ipa "downloads/$TAG/"
+            cp "$IPA" "downloads/$TAG/"
             echo "::warning::GitHub release assets unavailable; publishing verified IPAs as repository files."
           fi
           echo "mode=$MODE" >> "$GITHUB_OUTPUT"
@@ -101,13 +138,13 @@ jobs:
           MODE: ${{ steps.distribution.outputs.mode }}
         run: |
           set -euo pipefail
-          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE"
+          python3 scripts/publish_install_variants.py --build "$BUILD" --directory dist --mode "$MODE" --changelog dist/CHANGELOG.txt
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add repo.json source.json aukkhor-keyboard-v17.json
           if [ "$MODE" = direct ]; then
             git add -f "downloads/v0.2.0.$BUILD/"*.ipa
-            test -f "downloads/v0.2.0.$BUILD/Aukkhor-unsigned.ipa"
+            test -f "downloads/v0.2.0.$BUILD/Aukkhor-0.2.0.$BUILD.ipa"
           fi
           git diff --cached --quiet && exit 0
           git commit -m "catalog: publish only Aukkhor keyboard 0.2.0.$BUILD"
