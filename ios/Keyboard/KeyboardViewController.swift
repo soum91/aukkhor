@@ -165,6 +165,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let stack = UIStackView()
     private let contentStack = UIStackView()
     private var toolsExpanded = false
+    // Height of each typing row for the current page, set by buildKeys.
+    private var rowHeight = KeyboardPreferences.rowHeight
     private var keyboardHeightConstraint: NSLayoutConstraint?
     private let suggestions = UIStackView()
     private let banner = UILabel()
@@ -561,7 +563,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         row.distribution = .fillEqually
         row.spacing = KeyboardPreferences.keySpacing
         for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1, immediateInput: immediateInput)) }
-        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
+        row.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
         return row
     }
 
@@ -661,7 +663,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let punctuationWidth = punctuation.widthAnchor.constraint(equalTo: row.widthAnchor, multiplier: 0.62)
         punctuationWidth.priority = UILayoutPriority(999)
         punctuationWidth.isActive = true
-        row.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
+        row.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
         stack.addArrangedSubview(oneHandRow(row))
     }
 
@@ -840,6 +842,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         palette = KeyboardPalette.selected(dark: traitCollection.userInterfaceStyle == .dark)
         letterButtons.removeAll()
         shiftButton = nil
+        // With the number row on, the keyboard is sized for five rows. Symbol
+        // pages have four (their first row is already numbers), so share the
+        // spare row evenly instead of letting the bottom row swallow it.
+        let baseRow = KeyboardPreferences.rowHeight
+        rowHeight = symbols && !emojiMode && !clipboardPanel && !settingsPanel && KeyboardPreferences.numberRow
+            ? baseRow + (baseRow + KeyboardPreferences.rowGap) / 4
+            : baseRow
         KeyboardCanvasAppearance.apply(to: glassBackdrop, surface: surface, palette: palette)
         backgroundImageView.image = KeyboardPreferences.preset == .custom ? KeyboardPreferences.backgroundImage : nil
         backgroundImageView.isHidden = KeyboardPreferences.usesSystemCanvas
@@ -906,7 +915,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let bottom = UIStackView()
         bottom.axis = .horizontal
         bottom.spacing = KeyboardPreferences.keySpacing
-        bottom.heightAnchor.constraint(equalToConstant: KeyboardPreferences.rowHeight).isActive = true
+        bottom.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
         for (label, action) in bottomControls {
             let button = makeButton(label, action: action,
                                     immediateInput: label == "Space" || label == "return")
@@ -1099,6 +1108,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Max root touch delivery delay: \(maxRootDelivery) ms
         Gap-rescued touches: \(gapHits)
         Stale touches recovered: \(recoveredStale)
+        Late duplicate deliveries blocked: \(interactionHost.lateDuplicateCount)
         Root-early-routed key presses: \(earlyRouted)
         Haptic enabled: \(typingOptions.haptics ? "yes" : "no")
         Haptic mode: \(typingOptions.hapticMode.title)
