@@ -141,6 +141,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private let glassBackdrop = UIVisualEffectView(effect: nil)
     private let pressLens = KeyboardPressLensView()
+    // A few reusable popups so overlapping fingers each get one.
+    private let keyPopups = (0..<3).map { _ in KeyboardKeyPopupView() }
+    private var keyPopupsEnabled = KeyboardPreferences.keyPopups
     private weak var highlightedLensButton: KeyboardButton?
     // Keep every control in a plain view above the decorative material. An
     // effectless UIVisualEffectView can still install private hit-test views
@@ -240,6 +243,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         interactionHost.isMultipleTouchEnabled = true
         interactionHost.accessibilityIdentifier = "keyboard.interactionHost"
         surface.addSubview(interactionHost)
+        keyPopups.forEach { view.addSubview($0) }
         (view as? KeyboardInputView)?.keyRoutingView = interactionHost
         view.addGestureRecognizer(rootTouchMonitor)
         // UIKit can defer delivery to the descendant for a fraction of a
@@ -486,6 +490,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
         }
         button.setTitle(title, for: .normal)
+        // Pop up typed characters, not controls (Shift, Delete, Space, 123...).
+        if immediateInput, title.count == 1, !["⇧", "⇪", "⌫", "😊", "🌐", "⚙"].contains(title) {
+            button.onHighlightChanged = { [weak self] highlighted, key in
+                self?.updateKeyPopup(for: key, highlighted: highlighted)
+            }
+        }
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
                        "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
         if let name = symbols[title], let icon = UIImage(systemName: name) {
@@ -551,6 +561,28 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         button.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         return button
+    }
+
+    private func updateKeyPopup(for key: KeyboardButton, highlighted: Bool) {
+        guard keyPopupsEnabled, !isPreview || testingAllowTouchEvents else { return }
+        if highlighted {
+            let popup = keyPopups.first { $0.key === key }
+                ?? keyPopups.first { $0.isHidden }
+                ?? keyPopups.min { $0.shownAt < $1.shownAt }!
+            popup.shownAt = ProcessInfo.processInfo.systemUptime
+            view.bringSubviewToFront(popup)
+            popup.show(for: key, keyFrame: key.convert(key.bounds, to: view), in: view.bounds,
+                       dark: traitCollection.userInterfaceStyle == .dark)
+        } else if let popup = keyPopups.first(where: { $0.key === key }) {
+            // Keep a quick tap visible for at least ~90 ms so it registers.
+            let shown = popup.shownAt
+            let wait = max(0, 0.09 - (ProcessInfo.processInfo.systemUptime - shown))
+            if wait == 0 { popup.hide(); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) { [weak popup] in
+                guard let popup, popup.shownAt == shown, popup.key?.isHighlighted != true else { return }
+                popup.hide()
+            }
+        }
     }
 
     private func updatePressLens(for key: KeyboardButton, highlighted: Bool) {
@@ -834,6 +866,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stopDelete()
         highlightedLensButton = nil
         pressLens.isHidden = true
+        keyPopups.forEach { $0.hide() }
+        keyPopupsEnabled = KeyboardPreferences.keyPopups
         lastAppearanceSignature = KeyboardPreferences.renderingSignature
         typingOptions = TypingOptions()
         glideRecognizer.isEnabled = typingOptions.glide

@@ -200,6 +200,11 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardDoubleSpace") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardDoubleSpace") }
     }
+    // iOS-style enlarged letter above the pressed key.
+    static var keyPopups: Bool {
+        get { data.object(forKey: "keyboardKeyPopups") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardKeyPopups") }
+    }
     static var experimentalGlide: Bool {
         get { data.bool(forKey: "keyboardGlide") }
         set { data.set(newValue, forKey: "keyboardGlide") }
@@ -446,6 +451,67 @@ final class KeyboardButton: UIButton {
 // One light, transient highlight, shared by all keys. The underlying iOS 26+
 // clear glass material is the real refractive surface. Never add a permanent
 // rainbow border or dozens of live glass views to this keyboard extension.
+// Enlarged character shown above a pressed key, like the system keyboard.
+// One cheap shape layer and a label: no blur, no animation, no relayout.
+final class KeyboardKeyPopupView: UIView {
+    private let shape = CAShapeLayer()
+    private let label = UILabel()
+    private(set) weak var key: KeyboardButton?
+    var shownAt: TimeInterval = 0
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        isHidden = true
+        backgroundColor = .clear
+        accessibilityElementsHidden = true
+        layer.addSublayer(shape)
+        shape.shadowColor = UIColor.black.cgColor
+        shape.shadowOpacity = 0.28
+        shape.shadowRadius = 2
+        shape.shadowOffset = CGSize(width: 0, height: 1)
+        label.textAlignment = .center
+        label.font = .systemFont(ofSize: 32)
+        label.adjustsFontSizeToFitWidth = true
+        label.minimumScaleFactor = 0.5
+        addSubview(label)
+    }
+    required init?(coder: NSCoder) { nil }
+
+    // keyFrame and limits are in the superview's coordinates.
+    func show(for key: KeyboardButton, keyFrame: CGRect, in limits: CGRect, dark: Bool) {
+        self.key = key
+        label.text = key.title(for: .normal)
+        label.textColor = dark ? .white : .black
+        let width = max(keyFrame.width + 16, 46)
+        let bubbleHeight: CGFloat = 52
+        var top = keyFrame.minY - bubbleHeight + 6
+        top = max(limits.minY, top)
+        var left = keyFrame.midX - width / 2
+        left = min(max(limits.minX + 2, left), limits.maxX - width - 2)
+        let frame = CGRect(x: left, y: top, width: width, height: keyFrame.maxY - top)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        self.frame = frame
+        let bubble = CGRect(x: 0, y: 0, width: width, height: bubbleHeight)
+        let stem = CGRect(x: keyFrame.minX - left, y: bubbleHeight - 12,
+                          width: keyFrame.width, height: frame.height - bubbleHeight + 12)
+        let path = UIBezierPath(roundedRect: bubble, cornerRadius: 10)
+        path.append(UIBezierPath(roundedRect: stem, cornerRadius: 6))
+        shape.path = path.cgPath
+        shape.shadowPath = path.cgPath
+        shape.fillColor = (dark ? UIColor(white: 0.42, alpha: 1) : UIColor.white).cgColor
+        label.frame = bubble.insetBy(dx: 3, dy: 2)
+        CATransaction.commit()
+        isHidden = false
+    }
+
+    func hide() {
+        isHidden = true
+        key = nil
+    }
+}
+
 final class KeyboardPressLensView: UIView {
     private let transparentCore = CAGradientLayer()
     private let specular = CAGradientLayer()

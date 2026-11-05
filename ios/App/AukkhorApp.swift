@@ -123,6 +123,7 @@ private final class KeyboardSystemTestController: UIViewController {
     @State private var textReplacement = KeyboardPreferences.textReplacement
     @State private var doubleSpace = KeyboardPreferences.doubleSpacePeriod
     @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
+    @State private var keyPopups = KeyboardPreferences.keyPopups
     @State private var selectedBackground: PhotosPickerItem?
     @State private var selectedClipboardImage: PhotosPickerItem?
     @State private var autoScreenshots = AukkhorSettings.defaults.bool(forKey: "autoScreenshotClipboard")
@@ -287,6 +288,8 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: textReplacement) { KeyboardPreferences.textReplacement = $0 }
                     Text("Autocorrect is off by default and never changes capitalization. iOS text replacements match their exact shortcut spelling and remain independent. Backspace immediately after expansion restores the shortcut. If your signer removed shared settings, use these switches in the keyboard gear menu.")
                         .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Key popups", isOn: $keyPopups)
+                        .onChange(of: keyPopups) { KeyboardPreferences.keyPopups = $0 }
                     Toggle("Double space for period", isOn: $doubleSpace)
                         .onChange(of: doubleSpace) { KeyboardPreferences.doubleSpacePeriod = $0 }
                     Toggle("Experimental English glide typing", isOn: $experimentalGlide)

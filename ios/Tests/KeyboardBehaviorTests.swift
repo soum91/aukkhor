@@ -514,6 +514,28 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertNotNil(button("q"))
     }
 
+    func testPressedLetterShowsPopupButControlsDoNot() async throws {
+        let (keyboard, _) = keyboard()
+        keyboard.testingAllowTouchEvents = true
+        keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: 300)
+        keyboard.view.layoutIfNeeded()
+        func allButtons(_ view: UIView) -> [UIButton] {
+            (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { allButtons($0) }
+        }
+        let popups = keyboard.view.subviews.compactMap { $0 as? KeyboardKeyPopupView }
+        XCTAssertEqual(popups.count, 3)
+        let q = try XCTUnwrap(allButtons(keyboard.view).first { $0.accessibilityLabel == "q" })
+        q.isHighlighted = true
+        XCTAssertTrue(popups.contains { !$0.isHidden && $0.key === q })
+        q.isHighlighted = false
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(popups.allSatisfy { $0.isHidden })
+        let shift = try XCTUnwrap(allButtons(keyboard.view).first { $0.accessibilityLabel == "Shift" })
+        shift.isHighlighted = true
+        XCTAssertTrue(popups.allSatisfy { $0.isHidden }, "Controls do not pop up")
+        shift.isHighlighted = false
+    }
+
     func testShiftActsOnFingerDownForRollover() throws {
         let (keyboard, proxy) = keyboard()
         keyboard.testingAllowTouchEvents = true
