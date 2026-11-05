@@ -689,7 +689,14 @@ final class KeyboardInteractionView: UIView {
                     guard frame.width > 0, frame.height > 0 else { continue }
                     let dx = max(frame.minX - point.x, 0, point.x - frame.maxX)
                     let dy = max(frame.minY - point.y, 0, point.y - frame.maxY)
-                    let distance = dx * dx + dy * dy
+                    var distance = dx * dx + dy * dy
+                    // In the gap between a character and a control (Delete,
+                    // Shift, return), favor the character: a stray Delete
+                    // erases a letter, which is worse than one wrong letter.
+                    if distance > 0, let control = key as? KeyboardButton,
+                       !(control.title(for: .normal)?.count == 1 && control.accessibilityLabel?.count == 1) {
+                        distance *= 4
+                    }
                     // Use exactly the same acceptance bounds as the key.
                     if dx <= self.touchExpansion && dy <= self.touchExpansion && distance < nearestDistance {
                         nearest = key

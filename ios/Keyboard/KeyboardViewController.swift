@@ -1102,7 +1102,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         var missing: [Character] = []
         var expectedIndex = 0
         var isExpectedSubsequence = true
-        for character in observed {
+        // Judge misses by what was actually inserted. A late duplicate that
+        // was correctly blocked shows up as an unlabeled router touch, not a
+        // miss.
+        let typedLetters = attempted.lowercased().filter { $0.isLetter }
+        for character in typedLetters {
             guard let next = expected[expectedIndex...].firstIndex(of: character) else {
                 isExpectedSubsequence = false
                 break

@@ -337,6 +337,27 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(inserted, 2)
     }
 
+    func testGapBetweenLetterAndDeleteFavorsTheLetter() {
+        let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 420, height: 100))
+        host.directTouchRoutingEnabled = true
+        host.touchExpansion = 10
+        let m = KeyboardButton(type: .custom)
+        m.setTitle("m", for: .normal)
+        m.accessibilityLabel = "m"
+        m.insertsOnTouchDown = true
+        m.frame = CGRect(x: 300, y: 20, width: 34, height: 44)
+        let delete = KeyboardButton(type: .custom)
+        delete.accessibilityLabel = "Delete"
+        delete.insertsOnTouchDown = true
+        delete.frame = CGRect(x: 352, y: 20, width: 50, height: 44)
+        host.addSubview(m)
+        host.addSubview(delete)
+        // 10pt right of m, 8pt left of Delete.
+        XCTAssertTrue(host.beginDirectKey(at: CGPoint(x: 344, y: 40)) === m)
+        // Inside Delete still hits Delete.
+        XCTAssertTrue(host.beginDirectKey(at: CGPoint(x: 360, y: 40)) === delete)
+    }
+
     func testMergedSecondFingerTypesButDriftDoesNot() {
         let host = KeyboardInteractionView(frame: CGRect(x: 0, y: 0, width: 240, height: 100))
         host.directTouchRoutingEnabled = true
