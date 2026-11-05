@@ -564,7 +564,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func updateKeyPopup(for key: KeyboardButton, highlighted: Bool) {
-        guard keyPopupsEnabled, !isPreview || testingAllowTouchEvents else { return }
+        guard keyPopupsEnabled else { return }
         if highlighted {
             let popup = keyPopups.first { $0.key === key }
                 ?? keyPopups.first { $0.isHidden }
