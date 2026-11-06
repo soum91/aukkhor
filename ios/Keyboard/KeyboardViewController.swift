@@ -355,6 +355,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         super.viewWillAppear(animated)
         setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
         rootTouchMonitor.isEnabled = !isPreview || touchDebuggerRunning
+        if !isPreview { applyHostAppearance() }
         AukkhorSettings.refreshSharedSettings()
         if isViewLoaded {
             if lastAppearanceSignature != KeyboardPreferences.renderingSignature {
@@ -397,8 +398,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
            isViewLoaded { buildKeys() }
     }
 
+    // The keyboard plate iOS draws follows the host app (Temu forces light),
+    // but this extension inherits the phone's dark-mode setting. When the
+    // field declares an appearance, use it so labels match the plate.
+    private func applyHostAppearance() {
+        let style: UIUserInterfaceStyle
+        switch textDocumentProxy.keyboardAppearance ?? .default {
+        case .dark: style = .dark
+        case .light: style = .light
+        default: style = .unspecified
+        }
+        if overrideUserInterfaceStyle != style { overrideUserInterfaceStyle = style }
+    }
+
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        applyHostAppearance()
         // A host can move the caret or rewrite the field at any time.
         if !renderedBuffer.isEmpty && !(textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(renderedBuffer) {
             buffer = ""; renderedBuffer = ""
@@ -1088,6 +1103,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let receiver: String
         if touch.view === interactionHost {
             receiver = "router"
+        } else if let button = touch.view as? UIButton {
+            // Name the button so settings-panel taps can be checked against
+            // where the finger actually was.
+            let name = button.accessibilityLabel ?? button.title(for: .normal) ?? "button"
+            receiver = "'\(name)'"
         } else if let view = touch.view {
             receiver = view.accessibilityIdentifier ?? String(describing: Swift.type(of: view))
         } else {
@@ -1186,6 +1206,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         Only use non-sensitive test text. Nothing is uploaded or saved.
 
         Theme: \(debugCanvasDescription)
+        Keyboard height: \(Int(view.bounds.height)) pt, window: \(Int(view.window?.bounds.height ?? 0)) pt, in-window y: \(Int(view.convert(CGPoint.zero, to: nil).y))
+        Field appearance: \(Self.appearanceName(textDocumentProxy.keyboardAppearance)), keyboard style: \(traitCollection.userInterfaceStyle == .dark ? "dark" : "light")
         Expected test: \(String(expected))
         Root touch-downs seen: \(rootTouchSamples.count)
         Root touches in letter area: \(rootLetterTouches.count)
@@ -1963,6 +1985,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             shift = false
             autoShifted = false
             refreshShiftKeys()
+        }
+    }
+
+    static func appearanceName(_ appearance: UIKeyboardAppearance?) -> String {
+        switch appearance {
+        case .some(.dark): return "dark"
+        case .some(.light): return "light"
+        case .some(.default): return "default"
+        default: return "unknown"
         }
     }
 
