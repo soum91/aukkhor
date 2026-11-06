@@ -2,13 +2,13 @@ import Foundation
 import UIKit
 
 enum KeyboardPreset: String, CaseIterable, Identifiable {
-    case system, midnight, fullBlack, liquidGlass, clearPrism, blossom, mint, sunset, highContrast, custom
+    case system, midnight, fullBlack, liquidGlass, clearPrism, clearGlass, blossom, mint, sunset, highContrast, custom
 
     // Clear Prism's live backdrop caused severe missed input on devices. Keep
     // its raw value only to migrate existing installations; never offer it as
     // a selectable rendering mode again.
     static var allCases: [KeyboardPreset] {
-        [.system, .midnight, .fullBlack, .liquidGlass, .blossom, .mint,
+        [.system, .clearGlass, .midnight, .fullBlack, .liquidGlass, .blossom, .mint,
          .sunset, .highContrast, .custom]
     }
 
@@ -20,6 +20,7 @@ enum KeyboardPreset: String, CaseIterable, Identifiable {
         case .fullBlack: return "Full Black"
         case .liquidGlass: return "Liquid Glass"
         case .clearPrism: return "Clear Prism"
+        case .clearGlass: return "Clear Glass"
         case .blossom: return "Blossom"
         case .mint: return "Mint"
         case .sunset: return "Sunset"
@@ -136,7 +137,10 @@ enum KeyboardPreferences {
         set { data.set(newValue, forKey: "keyboardSeamlessBackground") }
     }
     static var usesSystemCanvas: Bool {
-        preset != .clearPrism && seamlessBackground && (preset == .system || glassEnabled)
+        // Clear Glass always sits on iOS's own keyboard backdrop, the only
+        // layer that can see (and blur) the app behind the keyboard.
+        preset == .clearGlass
+            || (preset != .clearPrism && seamlessBackground && (preset == .system || glassEnabled))
     }
     static func setGlassEnabled(_ enabled: Bool) {
         usesGlass = enabled
@@ -291,6 +295,10 @@ struct KeyboardPalette {
                          secondaryKey: UIColor(keyboardHex: "#202020"), foreground: .white,
                          muted: UIColor(keyboardHex: "#A0A0A0"), accent: .white,
                          border: UIColor(keyboardHex: "#333333"))
+        case .clearGlass:
+            return .init(background: .clear, key: .clear, secondaryKey: .clear,
+                         foreground: .label, muted: .secondaryLabel,
+                         accent: .label, border: .white)
         case .clearPrism:
             return .init(background: .clear, key: .white, secondaryKey: .white,
                          foreground: .white, muted: UIColor.white.withAlphaComponent(0.7),
@@ -389,14 +397,19 @@ struct KeyboardPalette {
 }
 
 // Used by every key, including Space, actions and suggestion candidates.
-enum KeyboardKeyAppearance {
+@MainActor enum KeyboardKeyAppearance {
     static func apply(to button: UIButton, palette: KeyboardPalette, secondary: Bool = false) {
         button.subviews.filter { $0.tag == 9401 }.forEach { $0.removeFromSuperview() }
         button.backgroundColor = .clear
         button.layer.borderWidth = 0
         button.layer.shadowOpacity = 0
         button.layer.cornerRadius = KeyboardPreferences.cornerRadius
+        (button as? KeyboardButton)?.glassChrome = nil
         guard KeyboardPreferences.keycapStyle != 2 else { return }
+        if KeyboardPreferences.preset == .clearGlass {
+            (button as? KeyboardButton)?.glassChrome = secondary ? .secondary : .primary
+            return
+        }
         let color = secondary ? palette.secondaryKey : palette.key
         let glass = KeyboardPreferences.preset == .liquidGlass || KeyboardPreferences.usesGlass
         // The shared canvas supplies the refracted material. A live interactive
@@ -446,11 +459,122 @@ final class KeyboardButton: UIButton {
             onHighlightChanged?(isHighlighted, self)
         }
     }
+    // Clear Glass keycap: a cached bitmap on one plain layer. No live
+    // effect views, masks or blurs, so it costs nothing per keystroke.
+    var glassChrome: KeyboardGlassChrome.Kind? {
+        didSet {
+            guard glassChrome != oldValue else { return }
+            if glassChrome == nil {
+                chromeLayer?.removeFromSuperlayer()
+                chromeLayer = nil
+                chromeSignature = ""
+            }
+            setNeedsLayout()
+        }
+    }
+    private var chromeLayer: CALayer?
+    private var chromeSignature = ""
+
     override func layoutSubviews() {
         super.layoutSubviews()
         if let backdrop = subviews.first(where: { $0.tag == 9401 }), subviews.first !== backdrop {
             sendSubviewToBack(backdrop)
         }
+        guard let kind = glassChrome, bounds.width > 4, bounds.height > 4 else { return }
+        let dark = traitCollection.userInterfaceStyle == .dark
+        let signature = "\(kind)|\(bounds.size)|\(layer.cornerRadius)|\(dark)"
+        let chrome: CALayer
+        if let existing = chromeLayer { chrome = existing } else {
+            chrome = CALayer()
+            chrome.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+            layer.insertSublayer(chrome, at: 0)
+            chromeLayer = chrome
+        }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        chrome.frame = bounds
+        if signature != chromeSignature {
+            chrome.contents = KeyboardGlassChrome.image(kind: kind, size: bounds.size,
+                                                        radius: layer.cornerRadius, dark: dark).cgImage
+            chrome.contentsScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
+            chromeSignature = signature
+        }
+        CATransaction.commit()
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        if glassChrome != nil { setNeedsLayout() }
+    }
+}
+
+// Draws a clear glass keycap once per size and appearance: a nearly clear
+// body, a soft top sheen, a light-catching rim brighter at the top, and a
+// faint cyan/magenta fringe along the edge for the prism look.
+@MainActor enum KeyboardGlassChrome {
+    enum Kind { case primary, secondary }
+    private static var cache: [String: UIImage] = [:]
+
+    static func image(kind: Kind, size: CGSize, radius: CGFloat, dark: Bool) -> UIImage {
+        let key = "\(kind)|\(Int(size.width * 2))x\(Int(size.height * 2))|\(radius)|\(dark)"
+        if let cached = cache[key] { return cached }
+        if cache.count > 64 { cache.removeAll() }
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+            let cg = context.cgContext
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 0.5, dy: 0.5)
+            let body = UIBezierPath(roundedRect: rect, cornerRadius: radius)
+            let colors = CGColorSpaceCreateDeviceRGB()
+            func gradient(_ stops: [(UIColor, CGFloat)]) -> CGGradient {
+                CGGradient(colorsSpace: colors, colors: stops.map { $0.0.cgColor } as CFArray,
+                           locations: stops.map { $0.1 })!
+            }
+            let white = UIColor.white
+            let secondary = kind == .secondary
+            // Body: barely there, slightly denser for action keys.
+            let fill = dark ? (secondary ? 0.10 : 0.06) : (secondary ? 0.30 : 0.42)
+            white.withAlphaComponent(fill).setFill()
+            body.fill()
+            // Top sheen.
+            cg.saveGState()
+            body.addClip()
+            cg.drawLinearGradient(gradient([(white.withAlphaComponent(dark ? 0.16 : 0.45), 0),
+                                            (white.withAlphaComponent(0), 0.55)]),
+                                  start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            cg.restoreGState()
+            // Rim: bright where light hits (top-left), dim mid, soft at bottom.
+            let rim = body.cgPath.copy(strokingWithWidth: 1.0, lineCap: .round, lineJoin: .round, miterLimit: 4)
+            cg.saveGState()
+            cg.addPath(rim)
+            cg.clip()
+            cg.drawLinearGradient(gradient([(white.withAlphaComponent(dark ? 0.70 : 0.95), 0),
+                                            (white.withAlphaComponent(dark ? 0.10 : 0.35), 0.5),
+                                            (white.withAlphaComponent(dark ? 0.32 : 0.6), 1)]),
+                                  start: .zero, end: CGPoint(x: size.width * 0.6, y: size.height), options: [])
+            cg.restoreGState()
+            // Prism fringe just inside the rim.
+            let inner = UIBezierPath(roundedRect: rect.insetBy(dx: 1.1, dy: 1.1),
+                                     cornerRadius: max(0, radius - 1.1))
+            let fringe = inner.cgPath.copy(strokingWithWidth: 0.8, lineCap: .round, lineJoin: .round, miterLimit: 4)
+            cg.saveGState()
+            cg.addPath(fringe)
+            cg.clip()
+            let strength: CGFloat = dark ? 0.34 : 0.22
+            cg.drawLinearGradient(gradient([(UIColor.systemCyan.withAlphaComponent(strength), 0),
+                                            (white.withAlphaComponent(0), 0.45),
+                                            (white.withAlphaComponent(0), 0.6),
+                                            (UIColor.systemPink.withAlphaComponent(strength), 1)]),
+                                  start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+            cg.restoreGState()
+            // Light mode needs a faint edge shadow to read on the pale plate.
+            if !dark {
+                UIColor.black.withAlphaComponent(0.10).setStroke()
+                let base = UIBezierPath(roundedRect: rect.offsetBy(dx: 0, dy: 0.5), cornerRadius: radius)
+                base.lineWidth = 0.5
+                base.stroke()
+            }
+        }
+        cache[key] = image
+        return image
     }
 }
 

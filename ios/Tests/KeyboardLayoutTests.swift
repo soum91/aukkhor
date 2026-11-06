@@ -87,6 +87,41 @@ private final class KeyboardHostField: UITextField {
         if !patternedBackdrop { window.isHidden = true }
     }
 
+    func testClearGlassKeysUseCachedChromeAndRenderEvidence() {
+        let savedPreset = KeyboardPreferences.preset
+        let savedStyle = KeyboardPreferences.keycapStyle
+        let savedSide = KeyboardPreferences.oneHandSide
+        defer {
+            KeyboardPreferences.preset = savedPreset
+            KeyboardPreferences.keycapStyle = savedStyle
+            KeyboardPreferences.oneHandSide = savedSide
+        }
+        XCTAssertTrue(KeyboardPreset.allCases.contains(.clearGlass))
+        KeyboardPreferences.preset = .clearGlass
+        KeyboardPreferences.keycapStyle = 0
+        KeyboardPreferences.oneHandSide = 0
+        XCTAssertTrue(KeyboardPreferences.usesSystemCanvas)
+        for style in [UIUserInterfaceStyle.dark, .light] {
+            let keyboard = KeyboardViewController()
+            keyboard.isPreview = true
+            keyboard.overrideUserInterfaceStyle = style
+            keyboard.loadViewIfNeeded()
+            keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: KeyboardPreferences.typingHeight)
+            keyboard.view.layoutIfNeeded()
+            let all = buttons(in: keyboard.view).compactMap { $0 as? KeyboardButton }
+            let q = all.first { $0.title(for: .normal) == "q" }!
+            let shift = all.first { $0.accessibilityLabel == "Shift" }!
+            XCTAssertEqual(q.glassChrome, .primary)
+            XCTAssertEqual(shift.glassChrome, .secondary)
+            XCTAssertNotNil(q.layer.sublayers?.first?.contents, "Keycap glass is one cached bitmap")
+            for button in all {
+                XCTAssertFalse(button.subviews.contains { $0 is UIVisualEffectView },
+                               "No live effect views per key")
+            }
+            capture(keyboard, name: "clear-glass-\(style == .dark ? "dark" : "light")", patternedBackdrop: true)
+        }
+    }
+
     func testNativeGeometryAndBackgroundRemoval() {
         let savedNumberRow = KeyboardPreferences.numberRow
         let savedStyle = KeyboardPreferences.keycapStyle

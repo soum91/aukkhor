@@ -175,6 +175,10 @@ private final class KeyboardSystemTestController: UIViewController {
                         }
                     }
                     .onChange(of: keyboardPreset) { KeyboardPreferences.preset = $0 }
+                    if keyboardPreset == .clearGlass {
+                        Text("Clear glass keys over iOS's own keyboard backdrop, which blurs the app behind it. Rims, sheen and prism fringe are drawn once and cached, so they add no typing lag. A keyboard cannot bend the app's pixels like Apple's own glass; iOS does not give extensions that access.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if keyboardPreset == .clearPrism {
                         Text("Clear glass uses iOS's refractive material with nearly invisible keycaps. A small lens highlight appears only while pressing a key, without a permanent rainbow frame or per-key glass effects.")
                             .font(.caption).foregroundStyle(.secondary)
