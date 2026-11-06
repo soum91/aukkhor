@@ -56,6 +56,7 @@ internal sealed class MainForm : Form, IAukkhorUi
         };
         Controls.Add(panel);
         panel.Controls.Add(Header("Aukkhor Windows", 20));
+        panel.Controls.Add(Header($"Installed version {Application.ProductVersion}", 9));
         panel.Controls.Add(Header("Trusted Wi-Fi / Ethernet adapter", 10));
         panel.Controls.Add(addresses);
         panel.Controls.Add(localIp);
