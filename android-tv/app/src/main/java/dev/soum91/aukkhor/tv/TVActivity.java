@@ -138,6 +138,13 @@ public final class TVActivity extends Activity {
 
         text(page, "Aukkhor  ·  অক্ষর", 32, ACCENT, true);
         text(page, "Use your iPhone keyboard to type on Google TV", 17, MUTED, false);
+        try {
+            android.content.pm.PackageInfo installed = getPackageManager().getPackageInfo(getPackageName(), 0);
+            long build = android.os.Build.VERSION.SDK_INT >= 28 ? installed.getLongVersionCode() : installed.versionCode;
+            text(page, "Installed version " + installed.versionName + " (build " + build + ")", 13, MUTED, false);
+        } catch (android.content.pm.PackageManager.NameNotFoundException ignored) {
+            text(page, "Installed version Unknown", 13, MUTED, false);
+        }
 
         LinearLayout cards = new LinearLayout(this);
         int widthDp = (int)(getResources().getDisplayMetrics().widthPixels /
