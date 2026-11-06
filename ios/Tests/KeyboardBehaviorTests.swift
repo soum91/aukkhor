@@ -607,6 +607,40 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertEqual(proxy.text, "Hi. Ok s. x. z", "Fields that ask for no capitals get none")
     }
 
+    func testEmojiLibraryHasTheFullSetAndSkinTones() {
+        let all = EmojiLibrary.sections.flatMap(\.glyphs)
+        XCTAssertGreaterThan(all.count, 1800, "Full Unicode set, not a sample")
+        XCTAssertEqual(EmojiLibrary.sections.map(\.title).first, "Smileys & People")
+        XCTAssertEqual(EmojiLibrary.sections.map(\.title).last, "Flags")
+        XCTAssertEqual(EmojiLibrary.applying(tone: 3, to: "👍"), "👍\u{1F3FD}")
+        // Variation selector is replaced by the tone.
+        XCTAssertEqual(EmojiLibrary.applying(tone: 5, to: "🖐️"), "🖐\u{1F3FF}")
+        XCTAssertEqual(EmojiLibrary.applying(tone: 2, to: "😀"), "😀", "Faces take no tone")
+        XCTAssertTrue(EmojiLibrary.search("thumbs").contains("👍"))
+        XCTAssertTrue(EmojiLibrary.search("canada").contains("🇨🇦"))
+    }
+
+    func testEmojiKeyboardInsertsAndRemembersRecents() throws {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingAllowTouchEvents = true
+        keyboard.view.frame = CGRect(x: 0, y: 0, width: 390, height: KeyboardPreferences.typingHeight)
+        func views(_ parent: UIView) -> [UIView] { [parent] + parent.subviews.flatMap(views) }
+        let emojiKey = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? UIButton }
+            .first { $0.accessibilityLabel == "😊" })
+        emojiKey.sendActions(for: .touchUpInside)
+        keyboard.view.layoutIfNeeded()
+        let panel = try XCTUnwrap(views(keyboard.view).compactMap { $0 as? EmojiKeyboardView }.first)
+        let sections = panel.testingSectionTitles
+        XCTAssertTrue(sections.contains("Flags"))
+        let index = sections.firstIndex(of: "Smileys & People")!
+        panel.testingSelect(section: index, item: 0)
+        XCTAssertEqual(proxy.text, "😀")
+        XCTAssertEqual(KeyboardPreferences.emojiRecents.first, "😀")
+        let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
+        XCTAssertEqual(root.contentHeight, KeyboardPreferences.typingHeight, accuracy: 0.5,
+                       "Emoji keyboard keeps the normal keyboard height")
+    }
+
     func testShiftActsOnFingerDownForRollover() throws {
         let (keyboard, proxy) = keyboard()
         keyboard.testingAllowTouchEvents = true
@@ -866,11 +900,12 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         let expectedHeight = KeyboardPreferences.typingHeight
         keyboard.toggleAppearancePanel()
         let root = try XCTUnwrap(keyboard.inputView as? KeyboardInputView)
-        XCTAssertGreaterThan(root.contentHeight, expectedHeight,
-                             "Keep build 61's expanded settings layout")
+        // Growing the keyboard for settings left iOS's plate out of line with
+        // touches; the panel scrolls inside the normal height instead.
+        XCTAssertEqual(root.contentHeight, expectedHeight, accuracy: 0.5)
         func views(_ parent: UIView) -> [UIView] { [parent] + parent.subviews.flatMap(views) }
         let all = views(keyboard.view)
-        XCTAssertNil(all.first { $0.accessibilityIdentifier == "keyboard.settingsScroll" })
+        XCTAssertNotNil(all.first { $0.accessibilityIdentifier == "keyboard.panelScroll" })
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
             .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
             "Keep sensitivity accessible in the existing expanded gear panel")

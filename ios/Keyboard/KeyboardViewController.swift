@@ -70,7 +70,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var emojiMode = false
     private var emojiSearch = false
     private var emojiQuery = ""
-    private var emojiGroup = "Faces"
     private var clipboardPanel = false
     private var clipboardHistory: [String] = [] // Session-only; never stored or collected in the background.
     private var replacements: [String: String] = [:]
@@ -954,8 +953,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         stack.addArrangedSubview(buildTopStrip())
         if settingsPanel {
             buildAppearancePanel()
+            wrapPanelInScroll()
         } else if clipboardPanel {
             buildClipboardPanel()
+            wrapPanelInScroll()
         } else if emojiMode {
             buildEmojiPanel()
         } else if symbols {
@@ -1008,6 +1009,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 self?.nativeSigns.toggle(); self?.buildKeys()
             }), at: 1)
         }
+        // The emoji keyboard carries its own ABC / categories / delete bar.
+        let ownBottomBar = emojiMode && !emojiSearch
         let bottom = UIStackView()
         bottom.axis = .horizontal
         bottom.spacing = KeyboardPreferences.keySpacing
@@ -1031,7 +1034,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 KeyboardKeyAppearance.apply(to: button, palette: palette, secondary: true)
             }
         }
-        stack.addArrangedSubview(oneHandRow(bottom))
+        if !ownBottomBar { stack.addArrangedSubview(oneHandRow(bottom)) }
         banner.text = nil
         banner.isHidden = true
         refreshShiftKeys()
@@ -1043,7 +1046,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let contentHeight = stack.systemLayoutSizeFitting(
             CGSize(width: keyWidth, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
-        let height = max(KeyboardPreferences.typingHeight, contentHeight)
+        // Panels scroll instead of growing (see wrapPanelInScroll); only the
+        // emoji search layout may need a little more on a 4-row keyboard.
+        let height = max(KeyboardPreferences.typingHeight,
+                         settingsPanel || clipboardPanel || (emojiMode && !emojiSearch)
+                            ? KeyboardPreferences.typingHeight : contentHeight)
         keyboardHeightConstraint?.constant = height
         (inputView as? KeyboardInputView)?.contentHeight = height
     }
@@ -1516,39 +1523,78 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func buildEmojiPanel() {
         if emojiSearch {
-            let found = EmojiCatalog.search(emojiQuery, group: emojiGroup)
-            if !found.isEmpty {
-                for start in stride(from: 0, to: min(found.count, 14), by: 7) {
-                    let chunk = Array(found[start..<min(start + 7, found.count)])
-                    stack.addArrangedSubview(row(chunk.map { entry in
-                        (entry.glyph, { [weak self] in self?.insertEmoji(entry.glyph) })
-                    }))
-                }
-            }
+            let found = EmojiLibrary.search(emojiQuery, limit: 8)
+            stack.addArrangedSubview(row(found.isEmpty
+                ? [(emojiQuery.isEmpty ? "Type to search emoji" : "No matches", {})]
+                : found.map { glyph in (glyph, { [weak self] in self?.insertEmoji(glyph) }) }))
             for line in ["qwertyuiop", "asdfghjkl", "zxcvbnm"] {
                 addChars(line.map(String.init))
             }
-        } else {
-            stack.addArrangedSubview(row(EmojiCatalog.groups.map { group in
-                (String(group.prefix(3)), { [weak self] in self?.emojiGroup = group; self?.buildKeys() })
-            }))
-            let found = EmojiCatalog.search("", group: emojiGroup)
-            for start in stride(from: 0, to: found.count, by: 7) {
-                let chunk = Array(found[start..<min(start + 7, found.count)])
-                stack.addArrangedSubview(row(chunk.map { entry in
-                    (entry.glyph, { [weak self] in self?.insertEmoji(entry.glyph) })
-                }))
-            }
+            stack.addArrangedSubview(row([
+                ("Back to emoji", { [weak self] in
+                    self?.emojiSearch = false; self?.emojiQuery = ""; self?.buildKeys()
+                }),
+                ("ABC", { [weak self] in self?.emojiMode = false; self?.emojiSearch = false; self?.buildKeys() })
+            ]))
+            return
         }
-        stack.addArrangedSubview(row([
-            (emojiSearch ? "Clear search" : "🔍 Search", { [weak self] in
-                guard let self else { return }
-                if self.emojiSearch { self.emojiQuery = "" }
-                else { self.emojiSearch = true }
-                self.buildKeys()
-            }),
-            ("ABC", { [weak self] in self?.emojiMode = false; self?.buildKeys() })
-        ]))
+        let abc = makeButton("ABC", action: { [weak self] in
+            self?.emojiMode = false; self?.buildKeys()
+        })
+        abc.titleLabel?.font = .systemFont(ofSize: 15)
+        KeyboardKeyAppearance.apply(to: abc, palette: palette, secondary: true)
+        let delete = makeButton("⌫", action: { [weak self] in self?.backspace() })
+        delete.accessibilityLabel = "Delete"
+        KeyboardKeyAppearance.apply(to: delete, palette: palette, secondary: true)
+        let emoji = EmojiKeyboardView(abc: abc, delete: delete,
+                                      foreground: palette.foreground, accent: palette.accent)
+        emoji.onInsert = { [weak self] glyph in
+            self?.insertEmoji(glyph)
+            self?.feedback()
+        }
+        emoji.onSearch = { [weak self] in
+            self?.emojiSearch = true; self?.emojiQuery = ""; self?.buildKeys()
+        }
+        emoji.setContentHuggingPriority(.defaultLow, for: .vertical)
+        emoji.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        stack.addArrangedSubview(emoji)
+    }
+
+    // Long panels scroll inside the normal keyboard height. Growing the
+    // keyboard made iOS spend seconds resizing (blank keyboard) and left its
+    // drawn plate out of line with the touch areas.
+    private func wrapPanelInScroll() {
+        let rows = Array(stack.arrangedSubviews.dropFirst())
+        guard !rows.isEmpty else { return }
+        let scroll = PanelScrollView()
+        scroll.accessibilityIdentifier = "keyboard.panelScroll"
+        scroll.showsVerticalScrollIndicator = true
+        scroll.alwaysBounceVertical = true
+        scroll.delaysContentTouches = false
+        if #available(iOS 26.0, *) {
+            scroll.topEdgeEffect.isHidden = true
+            scroll.bottomEdgeEffect.isHidden = true
+        }
+        let inner = UIStackView()
+        inner.axis = .vertical
+        inner.spacing = stack.spacing
+        inner.translatesAutoresizingMaskIntoConstraints = false
+        for row in rows {
+            stack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+            inner.addArrangedSubview(row)
+        }
+        scroll.addSubview(inner)
+        NSLayoutConstraint.activate([
+            inner.leadingAnchor.constraint(equalTo: scroll.contentLayoutGuide.leadingAnchor),
+            inner.trailingAnchor.constraint(equalTo: scroll.contentLayoutGuide.trailingAnchor),
+            inner.topAnchor.constraint(equalTo: scroll.contentLayoutGuide.topAnchor),
+            inner.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor),
+            inner.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor)
+        ])
+        scroll.setContentHuggingPriority(.defaultLow, for: .vertical)
+        scroll.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        stack.addArrangedSubview(scroll)
     }
 
     private func insertEmoji(_ emoji: String) {
@@ -1820,7 +1866,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         otpActionsVisible = false
         if emojiMode || clipboardPanel || settingsPanel || symbols || !typingOptions.suggestions {
             suggestionRequestKey = nil
-            let heading: String? = emojiMode ? (emojiSearch ? "🔍 \(emojiQuery)" : "Emoji: \(emojiGroup)")
+            let heading: String? = emojiMode ? (emojiSearch ? "🔍 \(emojiQuery)" : nil)
                 : (clipboardPanel ? "Session clipboard" : nil)
             setCandidates([], heading: heading)
             return

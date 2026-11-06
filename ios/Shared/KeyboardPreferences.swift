@@ -210,6 +210,24 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardDoubleSpace") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardDoubleSpace") }
     }
+    // Emoji history and chosen skin tones. Keys avoid the "keyboard" prefix
+    // so typing an emoji never counts as an appearance change.
+    static var emojiRecents: [String] {
+        data.stringArray(forKey: "aukkhorEmojiRecents") ?? []
+    }
+    static func rememberEmoji(_ glyph: String) {
+        var recents = emojiRecents.filter { $0 != glyph }
+        recents.insert(glyph, at: 0)
+        data.set(Array(recents.prefix(32)), forKey: "aukkhorEmojiRecents")
+    }
+    static var emojiTones: [String: Int] {
+        data.dictionary(forKey: "aukkhorEmojiTones") as? [String: Int] ?? [:]
+    }
+    static func setEmojiTone(_ tone: Int, for glyph: String) {
+        var tones = emojiTones
+        tones[glyph] = tone == 0 ? nil : tone
+        data.set(tones, forKey: "aukkhorEmojiTones")
+    }
     // iOS-style enlarged letter above the pressed key.
     static var keyPopups: Bool {
         get { data.object(forKey: "keyboardKeyPopups") as? Bool ?? true }
@@ -803,6 +821,15 @@ final class KeyboardInteractionView: UIView {
         let direct = super.hitTest(point, with: event)
         if let key = direct as? UIButton, key.isEnabled,
            key.bounds.contains(key.convert(point, from: self)) { return key }
+        // Inside scrolling content (emoji grid, scrolling panels) the touch
+        // belongs to what is under the finger; never pull it to a nearby key.
+        if let direct, !(direct is UIButton) {
+            var ancestor: UIView? = direct
+            while let view = ancestor, view !== self {
+                if view is UIScrollView { return direct }
+                ancestor = view.superview
+            }
+        }
         var nearest: UIButton?
         var nearestDistance = CGFloat.greatestFiniteMagnitude
         // Row edges (left of "a", right of "l", beside Shift/Delete) have
@@ -1077,4 +1104,10 @@ final class KeyboardInputView: UIInputView {
         let width = target.width > 0 && target.width < 10000 ? target.width : bounds.width
         return CGSize(width: width, height: contentHeight)
     }
+}
+
+// A panel made almost entirely of buttons must still scroll when a drag
+// starts on one; UIScrollView refuses to cancel UIControl touches by default.
+final class PanelScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
 }
