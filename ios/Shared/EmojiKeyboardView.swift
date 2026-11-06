@@ -33,7 +33,7 @@ import UIKit
     static let toned: Set<String> = Set(EmojiData.groups.flatMap { split($0.toned) })
 
     private static let named: [(glyph: String, name: String)] = EmojiData.groups.flatMap { group in
-        zip(split(group.glyphs), split(group.names)).map { (glyph: $0, name: $1) }
+        zip(split(group.glyphs), split(group.names)).map { (glyph: $0, name: $1.lowercased()) }
     }
 
     static func search(_ query: String, limit: Int = 40) -> [String] {
