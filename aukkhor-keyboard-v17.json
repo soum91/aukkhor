@@ -10,11 +10,21 @@
       "name": "Aukkhor",
       "bundleIdentifier": "dev.soum91.aukkhor",
       "developerName": "soum91",
-      "subtitle": "iPhone keyboard · 0.2.118",
+      "subtitle": "iPhone keyboard · 0.2.119",
       "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
       "category": "utilities",
       "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
       "versions": [
+        {
+          "version": "0.2.119",
+          "buildVersion": "119",
+          "date": "2026-11-06T16:05:21Z",
+          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
+          "changelog": "Add Clear Glass theme: clear keys with cached glass rims over the iOS backdrop. Bring back automatic capitals, rank suggestions with iOS's dictionary, gear opens Aukkhor.",
+          "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.119/Aukkhor-0.2.119.ipa",
+          "size": 1503809,
+          "minOSVersion": "16.0"
+        },
         {
           "version": "0.2.118",
           "buildVersion": "118",
@@ -64,24 +74,14 @@
           "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.0.113/Aukkhor-0.2.0.113.ipa",
           "size": 1463511,
           "minOSVersion": "16.0"
-        },
-        {
-          "version": "0.2.0.112",
-          "buildVersion": "112",
-          "date": "2026-11-05T16:03:34Z",
-          "localizedDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs.",
-          "changelog": "Make the suggestions test wait for the load-time context refresh.",
-          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/main/downloads/v0.2.0.112/Aukkhor-0.2.0.112.ipa",
-          "size": 1460551,
-          "minOSVersion": "16.0"
         }
       ],
-      "version": "0.2.118",
-      "buildVersion": "118",
-      "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.118/Aukkhor-0.2.118.ipa",
-      "size": 1477087,
+      "version": "0.2.119",
+      "buildVersion": "119",
+      "downloadURL": "https://github.com/soum91/aukkhor/releases/download/v0.2.119/Aukkhor-0.2.119.ipa",
+      "size": 1503809,
       "minOSVersion": "16.0",
-      "versionDate": "2026-11-05T23:18:49Z",
+      "versionDate": "2026-11-06T16:05:21Z",
       "versionDescription": "Aukkhor English and Bangla keyboard with Windows and TV companions. Contains the main app and one keyboard extension; no Share extension. Unsigned IPA: signer must preserve and provision both bundle IDs."
     }
   ]
