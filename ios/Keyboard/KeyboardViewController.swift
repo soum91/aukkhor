@@ -1145,7 +1145,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 key: key, position: point, deliveryMs: delivery,
                 actionMs: action, usedGapRouting: gap))
         }
-        show("Touch DEBUG ON · type qwertyuiopasdfghjklzxcvbnm, then tap left gear")
+        show(settingsPanel ? "Touch DEBUG ON · tap settings, then Touch debug: Finish"
+             : "Touch DEBUG ON · type qwertyuiopasdfghjklzxcvbnm, then hold ⚙ again")
     }
 
     private func finishTouchDebugger() {
@@ -1355,6 +1356,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func buildAppearancePanel() {
+        // Start/finish from here too, so settings-page taps can be measured.
+        stack.addArrangedSubview(row([
+            (touchDebuggerRunning ? "Touch debug: Finish" : "Touch debug: Start", { [weak self] in
+                guard let self else { return }
+                let wasRunning = self.touchDebuggerRunning
+                self.toggleTouchDebugger()
+                if !wasRunning {
+                    self.buildKeys() // Relabel this button as Finish.
+                    self.show("Touch DEBUG ON · tap settings, then Touch debug: Finish")
+                }
+            })
+        ]))
         stack.addArrangedSubview(row([
             (KeyboardPreferences.autoCapitalize ? "Auto-caps: On" : "Auto-caps: Off", { [weak self] in
                 KeyboardPreferences.autoCapitalize.toggle(); self?.buildKeys()
