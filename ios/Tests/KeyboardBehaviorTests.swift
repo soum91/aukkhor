@@ -7,6 +7,8 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
     private var selection: Range<String.Index>?
     var documentIdentifier = UUID()
     var textContentType: UITextContentType! = nil
+    // Existing tests type literal case; the auto-caps test opts in.
+    var autocapitalizationType: UITextAutocapitalizationType = .none
     var documentContextBeforeInput: String? { text }
     var documentContextAfterInput: String? { "" }
     var selectedText: String? { selection.map { String(text[$0]) } }
@@ -557,6 +559,54 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         shift.isHighlighted = false
     }
 
+    func testSentenceStartDetection() {
+        XCTAssertTrue(KeyboardViewController.isSentenceStart(""))
+        XCTAssertTrue(KeyboardViewController.isSentenceStart("Done. "))
+        XCTAssertTrue(KeyboardViewController.isSentenceStart("Really?! "))
+        XCTAssertTrue(KeyboardViewController.isSentenceStart("He said \"stop.\" "))
+        XCTAssertTrue(KeyboardViewController.isSentenceStart("line one\n"))
+        XCTAssertFalse(KeyboardViewController.isSentenceStart("hello "))
+        XCTAssertFalse(KeyboardViewController.isSentenceStart("Done."))
+        XCTAssertFalse(KeyboardViewController.isSentenceStart("one, "))
+    }
+
+    func testSuggestionKeepsTypedCase() {
+        XCTAssertEqual(KeyboardViewController.matchingCase(of: "hel", "hello"), "hello")
+        XCTAssertEqual(KeyboardViewController.matchingCase(of: "Hel", "hello"), "Hello")
+        XCTAssertEqual(KeyboardViewController.matchingCase(of: "HEL", "hello"), "HELLO")
+        XCTAssertEqual(KeyboardViewController.matchingCase(of: "H", "hello"), "Hello")
+    }
+
+    func testAutoCapitalizesSentenceStartsAndRespectsManualShift() throws {
+        let old = KeyboardPreferences.autoCapitalize
+        KeyboardPreferences.autoCapitalize = true
+        defer { KeyboardPreferences.autoCapitalize = old }
+        let (keyboard, proxy) = keyboard()
+        proxy.autocapitalizationType = .sentences
+        keyboard.textDidChange(nil)
+        keyboard.testingTypeCharacter("h")
+        keyboard.testingTypeCharacter("i")
+        XCTAssertEqual(proxy.text, "Hi", "First letter of the field is capitalized")
+        keyboard.testingTypeCharacter(".")
+        keyboard.testingTypeCharacter(" ")
+        keyboard.testingTypeCharacter("o")
+        keyboard.testingTypeCharacter("k")
+        keyboard.testingTypeCharacter(" ")
+        keyboard.testingTypeCharacter("s")
+        XCTAssertEqual(proxy.text, "Hi. Ok s", "Capital after a period, not mid-sentence")
+        // Shift tapped off at a sentence start stays off for that letter.
+        keyboard.testingTypeCharacter(".")
+        keyboard.testingTypeCharacter(" ")
+        keyboard.tapShift()
+        keyboard.testingTypeCharacter("x")
+        XCTAssertEqual(proxy.text, "Hi. Ok s. x")
+        proxy.autocapitalizationType = .none
+        keyboard.testingTypeCharacter(".")
+        keyboard.testingTypeCharacter(" ")
+        keyboard.testingTypeCharacter("z")
+        XCTAssertEqual(proxy.text, "Hi. Ok s. x. z", "Fields that ask for no capitals get none")
+    }
+
     func testShiftActsOnFingerDownForRollover() throws {
         let (keyboard, proxy) = keyboard()
         keyboard.testingAllowTouchEvents = true
@@ -825,8 +875,8 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
             .first { $0.title(for: .normal)?.hasPrefix("Touch:") == true },
             "Keep sensitivity accessible in the existing expanded gear panel")
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
-            .first { $0.accessibilityLabel == "Touch debugger" },
-            "The blocked app-launch gear should offer an in-keyboard debugger")
+            .first { $0.accessibilityLabel == "Open Aukkhor" },
+            "The tools gear opens the Aukkhor app")
         XCTAssertNotNil(all.compactMap { $0 as? UIButton }
             .first { $0.accessibilityLabel == "Keyboard settings" },
             "Keep the right gear for existing keyboard settings")

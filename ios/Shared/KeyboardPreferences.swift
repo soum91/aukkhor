@@ -188,6 +188,12 @@ enum KeyboardPreferences {
         get { data.object(forKey: "keyboardSuggestions") as? Bool ?? true }
         set { data.set(newValue, forKey: "keyboardSuggestions") }
     }
+    // Capitalize the start of sentences, following each field's own
+    // capitalization trait (none for URLs, emails and passwords).
+    static var autoCapitalize: Bool {
+        get { data.object(forKey: "keyboardAutoCaps") as? Bool ?? true }
+        set { data.set(newValue, forKey: "keyboardAutoCaps") }
+    }
     static var autocorrect: Bool {
         get { data.bool(forKey: "keyboardAutocorrect") }
         set { data.set(newValue, forKey: "keyboardAutocorrect") }

@@ -427,21 +427,26 @@ private final class KeyboardHostField: UITextField {
         // the manual requests below and the test races it.
         try await Task.sleep(for: .milliseconds(400))
         keyboard.requestSuggestions(prefix: "he", phonetic: false, bangla: false)
+        // Rankings come from iOS's dictionary, so check shape, not exact words.
+        func shows(_ prefix: String) -> Bool {
+            candidateButtons.contains { !$0.isHidden && ($0.title(for: .normal) ?? "").lowercased().hasPrefix(prefix) }
+        }
         for _ in 0..<100 {
-            if candidateButtons.contains(where: { $0.title(for: .normal) == "hello" }) { break }
+            if shows("he") { break }
             try await Task.sleep(for: .milliseconds(30))
         }
-        XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "hello" },
-                      "A fresh completion must reach the persistent candidate buttons")
+        XCTAssertTrue(shows("he"), "A fresh completion must reach the persistent candidate buttons")
         for i in 0..<100 {
             keyboard.requestSuggestions(prefix: "h\(i)", phonetic: false, bangla: false)
         }
         keyboard.requestSuggestions(prefix: "key", phonetic: false, bangla: false)
         for _ in 0..<100 {
-            if candidateButtons.contains(where: { $0.title(for: .normal) == "keyboard" && !$0.isHidden }) { break }
+            if shows("key") && !shows("h") { break }
             try await Task.sleep(for: .milliseconds(30))
         }
-        XCTAssertTrue(candidateButtons.contains { $0.title(for: .normal) == "keyboard" && !$0.isHidden })
+        XCTAssertTrue(shows("key"))
+        XCTAssertFalse(candidateButtons.contains { !$0.isHidden && ($0.title(for: .normal) ?? "").hasPrefix("h") },
+                       "Stale h-lookups must not repaint over the newest word")
         let after = buttons(in: keyboard.view).filter {
             $0.accessibilityIdentifier?.hasPrefix("keyboard.candidate.") == true
         }

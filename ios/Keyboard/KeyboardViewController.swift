@@ -17,6 +17,7 @@ private struct TypingOptions {
     let suggestions = KeyboardPreferences.suggestions
     let doubleSpace = KeyboardPreferences.doubleSpacePeriod
     let glide = KeyboardPreferences.experimentalGlide
+    let autoCaps = KeyboardPreferences.autoCapitalize
 }
 
 // The user explicitly starts this trace. Keep only the touch locations/key
@@ -48,6 +49,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var shift = false
     private var capsLock = false
     private var lastShiftTap = Date.distantPast
+    // Shift that the keyboard turned on by itself at a sentence start. A
+    // manual Shift tap clears it, and the text at that moment is remembered so
+    // the keyboard does not immediately turn Shift back on.
+    private var autoShifted = false
+    private var autoShiftDeclinedContext: String?
+    private let textChecker = UITextChecker()
+    private lazy var checkerLanguage: String? = {
+        let available = UITextChecker.availableLanguages
+        let preferred = Locale.preferredLanguages.map { $0.replacingOccurrences(of: "-", with: "_") }
+        return preferred.first { $0.hasPrefix("en") && available.contains($0) }
+            ?? (available.contains("en_US") ? "en_US" : available.first { $0.hasPrefix("en") })
+    }()
     private var lastSpaceTap = Date.distantPast
     private var symbols = false
     private var symbolPage = 0
@@ -349,6 +362,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 buildKeys()
             }
             prepareHaptic()
+            updateAutoShift()
             refreshSuggestions()
         }
     }
@@ -389,6 +403,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if !renderedBuffer.isEmpty && !(textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(renderedBuffer) {
             buffer = ""; renderedBuffer = ""
         }
+        updateAutoShift()
         refreshSuggestions()
     }
 
@@ -752,6 +767,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         let scroll = UIScrollView()
         scroll.showsVerticalScrollIndicator = false
+        // iOS 26 frosts the top and bottom of every scroll view. In this
+        // narrow column that smeared the first tool into a grey square.
+        if #available(iOS 26.0, *) {
+            scroll.topEdgeEffect.isHidden = true
+            scroll.bottomEdgeEffect.isHidden = true
+        }
         let tools = UIStackView()
         tools.axis = .vertical
         tools.spacing = 6
@@ -769,7 +790,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             scroll.widthAnchor.constraint(equalTo: contentStack.widthAnchor, multiplier: 0.18)
         ])
         let controls: [(String, () -> Void)] = [
-            ("⚙", { [weak self] in self?.toggleTouchDebugger() }),
+            ("⚙", { [weak self] in self?.openHostApp() }),
             ("Paste", { [weak self] in self?.paste() }),
             ("OTP", { [weak self] in self?.pasteOneTimeCode() }),
             ("Cut", { [weak self] in self?.cut() }),
@@ -783,14 +804,34 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         for (title, action) in controls {
             let button = makeButton(title, action: action)
             if title == "⚙" {
-                button.accessibilityLabel = "Touch debugger"
-                button.accessibilityHint = "Start or finish a local touch diagnostic session"
+                button.accessibilityLabel = "Open Aukkhor"
+                button.accessibilityHint = "Opens the Aukkhor app"
             }
             button.titleLabel?.font = .systemFont(ofSize: title.count > 1 ? 11 : 20)
             button.heightAnchor.constraint(equalToConstant: 34).isActive = true
             tools.addArrangedSubview(button)
         }
 
+    }
+
+    // Keyboard extensions have no public openURL. The host's UIApplication is
+    // still in the responder chain, so send it openURL:options:completionHandler:
+    // directly (the selector Apple keeps for apps).
+    private func openHostApp() {
+        guard let url = URL(string: "aukkhor://settings") else { return }
+        let selector = NSSelectorFromString("openURL:options:completionHandler:")
+        var responder: UIResponder? = self
+        while let current = responder {
+            if current.isKind(of: UIApplication.self), current.responds(to: selector),
+               let method = current.method(for: selector) {
+                typealias OpenURL = @convention(c) (AnyObject, Selector, NSURL, NSDictionary, AnyObject?) -> Void
+                let open = unsafeBitCast(method, to: OpenURL.self)
+                open(current, selector, url as NSURL, NSDictionary(), nil)
+                return
+            }
+            responder = current.next
+        }
+        show("Open the Aukkhor app from the Home Screen")
     }
 
     private func cycleOneHand() {
@@ -979,6 +1020,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         banner.text = nil
         banner.isHidden = true
         refreshShiftKeys()
+        updateAutoShift()
         refreshSuggestions()
         // Fit settings/emoji content without a separate hard-coded panel height.
         let availableWidth = max(160, view.bounds.width - 8)
@@ -1292,6 +1334,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func buildAppearancePanel() {
         stack.addArrangedSubview(row([
+            (KeyboardPreferences.autoCapitalize ? "Auto-caps: On" : "Auto-caps: Off", { [weak self] in
+                KeyboardPreferences.autoCapitalize.toggle(); self?.buildKeys()
+            }),
             (KeyboardPreferences.autocorrect ? "Autocorrect: On" : "Autocorrect: Off", { [weak self] in
                 KeyboardPreferences.autocorrect.toggle(); self?.buildKeys()
             }),
@@ -1392,6 +1437,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     func tapShift() {
+        if autoShifted && shift && !capsLock {
+            // Declining an automatic capital at this position.
+            autoShiftDeclinedContext = textDocumentProxy.documentContextBeforeInput ?? ""
+        }
+        autoShifted = false
         if Date().timeIntervalSince(lastShiftTap) < 0.35 {
             capsLock.toggle()
             shift = capsLock
@@ -1589,7 +1639,35 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             replaceWord(currentWord(), with: value)
         }
         textDocumentProxy.insertText(" ")
+        if shift && !capsLock { shift = false; autoShifted = false; refreshShiftKeys() }
+        updateAutoShift()
         refreshSuggestions()
+    }
+
+    // Keep the case the user started typing in: "Hel" -> "Hello", "HEL" -> "HELLO".
+    static func matchingCase(of typed: String, _ word: String) -> String {
+        guard let first = typed.first, first.isUppercase else { return word }
+        if typed.count > 1, typed == typed.uppercased(), typed.contains(where: \.isLetter) {
+            return word.uppercased()
+        }
+        return word.prefix(1).uppercased() + word.dropFirst()
+    }
+
+    // iOS's own spelling dictionary: frequency-ranked completions and real
+    // corrections, instead of the tiny alphabetical starter list.
+    private func systemCompletions(for prefix: String) -> [String] {
+        guard let language = checkerLanguage, !prefix.isEmpty else { return [] }
+        let range = NSRange(location: 0, length: (prefix as NSString).length)
+        var found: [String] = []
+        if prefix.count >= 3,
+           textChecker.rangeOfMisspelledWord(in: prefix, range: range, startingAt: 0,
+                                             wrap: false, language: language).location != NSNotFound,
+           let guess = textChecker.guesses(forWordRange: range, in: prefix, language: language)?.first {
+            found.append(guess)
+        }
+        found += (textChecker.completions(forPartialWordRange: range, in: prefix,
+                                          language: language) ?? []).prefix(6)
+        return found
     }
 
     private func installSuggestionControls() {
@@ -1663,7 +1741,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 guard let self, self.suggestionRequestKey == key,
                       !self.settingsPanel, !self.emojiMode, !self.clipboardPanel,
                       !self.symbols, self.typingOptions.suggestions else { return }
-                self.setCandidates(values)
+                guard !phonetic, !bangla else { self.setCandidates(values); return }
+                let lower = prefix.lowercased()
+                // Explicit shortcut first, then a correction, then the most
+                // frequent completions; the starter list only fills gaps.
+                let shortcut = shortcuts[lower]
+                var ranked: [String] = []
+                if let shortcut { ranked.append(shortcut) }
+                if let fix = KeyboardSuggestions.correction(lower, replacements: [:]) { ranked.append(fix) }
+                ranked += self.systemCompletions(for: lower) + values
+                var seen: Set<String> = [lower]
+                var final: [String] = []
+                for word in ranked {
+                    let shaped = word == shortcut ? word : Self.matchingCase(of: prefix, word)
+                    guard seen.insert(shaped.lowercased()).inserted else { continue }
+                    final.append(shaped)
+                    if final.count == 3 { break }
+                }
+                self.setCandidates(final)
             }
         }
     }
@@ -1704,7 +1799,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                                     bangla: self.mode == .bangla)
         }
         contextRefreshWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.07, execute: work)
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {
@@ -1732,7 +1827,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func cycleMode() {
         commitBuffer()
         mode = InputMode(rawValue: (mode.rawValue + 1) % InputMode.allCases.count)!
-        symbols = false; shift = false; capsLock = false
+        symbols = false; shift = false; capsLock = false; autoShifted = false
         emojiMode = false; clipboardPanel = false
         buildKeys()
     }
@@ -1818,11 +1913,69 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             if mode == .english && !symbols {
                 if value.count == 1 && value.first?.isLetter == true && shift && !capsLock {
                     shift = false
+                    autoShifted = false
                     refreshShiftKeys()
                 }
             }
+            if value.count == 1, value.first?.isLetter != true { updateAutoShift() }
         }
         refreshSuggestions()
+    }
+
+    // Turn Shift on at the start of a sentence (or every word/letter when the
+    // field asks for it) and back off when that no longer applies. Never
+    // touches a Shift the user set themselves.
+    private func updateAutoShift() {
+        guard isViewLoaded, mode == .english, !capsLock else { return }
+        // The host app's embedded preview and plain layout tests have no real
+        // field; only a live field (or an injected test field) drives this.
+        #if DEBUG
+        guard !isPreview || testingProxy != nil else { return }
+        #else
+        guard !isPreview else { return }
+        #endif
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        if let declined = autoShiftDeclinedContext {
+            if declined == before { return }
+            autoShiftDeclinedContext = nil
+        }
+        var wanted = false
+        if typingOptions.autoCaps, !symbols, !emojiMode, !settingsPanel, !clipboardPanel {
+            switch textDocumentProxy.autocapitalizationType ?? .sentences {
+            case .none:
+                wanted = false
+            case .allCharacters:
+                wanted = true
+            case .words:
+                wanted = before.isEmpty || before.last?.isWhitespace == true
+            default:
+                wanted = Self.isSentenceStart(before)
+            }
+            if textDocumentProxy.isSecureTextEntry == true || textDocumentProxy.keyboardType == .emailAddress
+                || textDocumentProxy.keyboardType == .URL || textDocumentProxy.keyboardType == .webSearch
+                || textDocumentProxy.textContentType == .oneTimeCode { wanted = false }
+        }
+        if wanted && !shift {
+            shift = true
+            autoShifted = true
+            refreshShiftKeys()
+        } else if !wanted && shift && autoShifted {
+            shift = false
+            autoShifted = false
+            refreshShiftKeys()
+        }
+    }
+
+    static func isSentenceStart(_ before: String) -> Bool {
+        if before.isEmpty || before.last == "\n" { return true }
+        guard before.last?.isWhitespace == true else { return false }
+        let trimmed = before.trimmingCharacters(in: .whitespaces)
+        guard let last = trimmed.last else { return true }
+        if last == "\n" { return true }
+        // "Done." / "Really?!" / "Wait..." / closing quote or bracket after them.
+        let closing: Set<Character> = ["\"", "'", ")", "]", "”", "’"]
+        let core = trimmed.reversed().drop { closing.contains($0) }.first
+        return core.map { ".!?".contains($0) } ?? false
     }
 
     private func commitBuffer() { buffer = ""; renderedBuffer = "" }
@@ -1880,6 +2033,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             commitBuffer()
             textDocumentProxy.deleteBackward()
         }
+        updateAutoShift()
         if refresh { refreshSuggestions() }
     }
 
