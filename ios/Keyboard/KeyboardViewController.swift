@@ -184,12 +184,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // Height of each typing row for the current page, set by buildKeys.
     private var rowHeight = KeyboardPreferences.rowHeight
     private var keyboardHeightConstraint: NSLayoutConstraint?
-    // iOS caps how tall a keyboard may be. Asking for more (the settings
-    // page) made iOS draw its plate at the requested height while giving this
-    // view less, so everything drew ~15pt below its touch area. Learn the cap
-    // and never ask past it.
-    private static var hostHeightLimit: CGFloat?
-    private var heightCheck: DispatchWorkItem?
     private let suggestions = UIStackView()
     private let banner = UILabel()
     private var palette = KeyboardPalette.selected(dark: false)
@@ -637,10 +631,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         row.distribution = .fillEqually
         row.spacing = KeyboardPreferences.keySpacing
         for item in items { row.addArrangedSubview(makeButton(item.0, action: item.1, immediateInput: immediateInput)) }
-        let height = row.heightAnchor.constraint(equalToConstant: rowHeight)
-        // Panel rows may shrink a little to fit under iOS's height cap.
-        if settingsPanel || emojiMode || clipboardPanel { height.priority = UILayoutPriority(999) }
-        height.isActive = true
+        row.heightAnchor.constraint(equalToConstant: rowHeight).isActive = true
         return row
     }
 
@@ -1052,30 +1043,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let contentHeight = stack.systemLayoutSizeFitting(
             CGSize(width: keyWidth, height: UIView.layoutFittingCompressedSize.height),
             withHorizontalFittingPriority: .required, verticalFittingPriority: .fittingSizeLevel).height
-        var height = max(KeyboardPreferences.typingHeight, contentHeight)
-        if let limit = Self.hostHeightLimit { height = min(height, max(limit, KeyboardPreferences.typingHeight)) }
+        let height = max(KeyboardPreferences.typingHeight, contentHeight)
         keyboardHeightConstraint?.constant = height
         (inputView as? KeyboardInputView)?.contentHeight = height
-        scheduleHeightCapCheck(requested: height)
-    }
-
-    // After iOS has finished resizing, compare what it gave with what was
-    // asked. A shortfall is iOS's cap: re-request exactly that height so the
-    // plate and this view line up again.
-    private func scheduleHeightCapCheck(requested: CGFloat) {
-        heightCheck?.cancel()
-        guard !isPreview, requested > KeyboardPreferences.typingHeight + 1 else { return }
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.keyboardHeightConstraint?.constant == requested else { return }
-            let actual = self.view.bounds.height
-            guard actual + 1 < requested, actual >= KeyboardPreferences.typingHeight - 1 else { return }
-            Self.hostHeightLimit = actual
-            self.keyboardHeightConstraint?.constant = actual
-            (self.inputView as? KeyboardInputView)?.contentHeight = actual
-            self.view.setNeedsLayout()
-        }
-        heightCheck = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: work)
     }
 
     private func colorControl(_ title: String, set: @escaping (String) -> Void) -> UIButton {
