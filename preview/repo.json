@@ -1,0 +1,38 @@
+{
+  "name": "Aukkhor OTP/Edit Preview",
+  "identifier": "dev.soum91.aukkhor.otp-edit-preview.source",
+  "subtitle": "Separate Aukkhor branch test feed",
+  "description": "Unsigned branch preview. Adds Copy, keyboard-local Select and Select All, and an OTP action that displays available VaultBridge codes on demand. Image paste must still use the containing app context menu. Sign both app and keyboard extension with matching App Group entitlements.",
+  "sourceURL": "https://raw.githubusercontent.com/soum91/aukkhor/fix/otp-edit-tools-20261107/preview/repo.json",
+  "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/fix/otp-edit-tools-20261107/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
+  "apps": [
+    {
+      "name": "Aukkhor Preview",
+      "bundleIdentifier": "dev.soum91.aukkhor",
+      "developerName": "soum91",
+      "subtitle": "OTP and edit tools branch",
+      "localizedDescription": "Unsigned branch preview. Adds Copy, keyboard-local Select and Select All, and an OTP action that displays available VaultBridge codes on demand. Image paste must still use the containing app context menu. Sign both app and keyboard extension with matching App Group entitlements.",
+      "category": "utilities",
+      "iconURL": "https://raw.githubusercontent.com/soum91/aukkhor/fix/otp-edit-tools-20261107/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png",
+      "versions": [
+        {
+          "version": "0.2.126",
+          "buildVersion": "126",
+          "date": "2026-11-07T20:07:26Z",
+          "localizedDescription": "Unsigned branch preview. Adds Copy, keyboard-local Select and Select All, and an OTP action that displays available VaultBridge codes on demand. Image paste must still use the containing app context menu. Sign both app and keyboard extension with matching App Group entitlements.",
+          "changelog": "Added Copy, Select and Select All actions to the existing tools rail; OTP action now shows available VaultBridge codes in fields not marked for OTP; added a host-text preservation test. No touch-routing or theme changes.",
+          "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/fix/otp-edit-tools-20261107/preview/Aukkhor-0.2.126-unsigned.ipa",
+          "size": 1598307,
+          "minOSVersion": "16.0"
+        }
+      ],
+      "version": "0.2.126",
+      "buildVersion": "126",
+      "downloadURL": "https://raw.githubusercontent.com/soum91/aukkhor/fix/otp-edit-tools-20261107/preview/Aukkhor-0.2.126-unsigned.ipa",
+      "size": 1598307,
+      "minOSVersion": "16.0",
+      "versionDate": "2026-11-07T20:07:26Z",
+      "versionDescription": "Unsigned branch preview. Adds Copy, keyboard-local Select and Select All, and an OTP action that displays available VaultBridge codes on demand. Image paste must still use the containing app context menu. Sign both app and keyboard extension with matching App Group entitlements."
+    }
+  ]
+}
