@@ -87,7 +87,8 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add preview/Aukkhor-0.2.126-unsigned.ipa preview/repo.json
+          git add preview/repo.json
+          git add -f preview/Aukkhor-0.2.126-unsigned.ipa
           if git diff --cached --quiet; then
             echo 'Preview files are already current.'
           else
@@ -95,6 +96,7 @@ jobs:
             git push origin HEAD:refs/heads/fix/otp-edit-tools-20261107
           fi
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: Aukkhor-OTP-Edit-Preview-0.2.126
           path: |
