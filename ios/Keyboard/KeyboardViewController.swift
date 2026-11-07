@@ -106,6 +106,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var candidateValues = [String](repeating: "", count: 3)
     private var otpActionsVisible = false
     private var otpCandidates: [OTPInbox.Candidate] = []
+    private var manualOTPMode = false
+    // Keyboard extensions cannot change the host's native text selection.
+    // Keep a short-lived, keyboard-local copy target instead of altering text.
+    private struct CopyTarget {
+        let text: String
+        let document: UUID
+        let before: String?
+        let selected: String?
+        let after: String?
+    }
+    private var copyTarget: CopyTarget?
     private let suggestionHeading = UILabel()
     private var suggestionRequestKey: String?
     private var contextRefreshWork: DispatchWorkItem?
@@ -146,6 +157,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     var testingOTPActionVisible: Bool { otpActionsVisible }
     var testingCandidateTitles: [String] { candidateValues }
     func testingInsertOTP(from text: String) -> Bool { insertOneTimeCode(from: text) }
+    var testingCopyTarget: String? { copyTarget?.text }
+    func testingSelectWordForCopy() { selectWordForCopy() }
+    func testingSelectAllForCopy() { selectAllForCopy() }
     func testingFormatSelection(_ action: String) { if let action = SelectionFormat(rawValue: action) { formatSelection(action) } }
     func testingToggleTouchDebugger() { toggleTouchDebugger() }
     var testingTouchDebugOverlay: UIView? { touchDebugOverlay }
@@ -377,6 +391,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        copyTarget = nil
+        manualOTPMode = false
         clearTouchDebugger()
         rootTouchMonitor.isEnabled = false
         interactionHost.cancelActiveTouches()
@@ -412,6 +428,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
+        copyTarget = nil
+        manualOTPMode = false
         applyHostAppearance()
         // A host can move the caret or rewrite the field at any time.
         if !renderedBuffer.isEmpty && !(textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(renderedBuffer) {
@@ -806,7 +824,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let controls: [(String, () -> Void)] = [
             ("⚙", { [weak self] in self?.openHostApp() }),
             ("Paste", { [weak self] in self?.paste() }),
-            ("OTP", { [weak self] in self?.pasteOneTimeCode() }),
+            ("Copy", { [weak self] in self?.copyText() }),
+            ("Select", { [weak self] in self?.selectWordForCopy() }),
+            ("Select All", { [weak self] in self?.selectAllForCopy() }),
+            ("OTP", { [weak self] in self?.showOTPChoices() }),
             ("Cut", { [weak self] in self?.cut() }),
             ("Define", { [weak self] in self?.define() }),
             ("Speak", { [weak self] in self?.speak() }),
@@ -1767,6 +1788,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                             if let code = OTPInbox.consume(self.otpCandidates[index]) {
                                 self.commitBuffer()
                                 self.textDocumentProxy.insertText(code)
+                                self.manualOTPMode = false
                                 self.show("VaultBridge code filled")
                                 self.refreshSuggestions()
                             }
@@ -1821,7 +1843,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 // avoids dropping valid results for that same word.
                 guard let self, self.suggestionRequestKey == key,
                       !self.settingsPanel, !self.emojiMode, !self.clipboardPanel,
-                      !self.symbols, self.typingOptions.suggestions else { return }
+                      !self.symbols, !self.otpActionsVisible,
+                      self.typingOptions.suggestions else { return }
                 guard !phonetic, !bangla else { self.setCandidates(values); return }
                 let lower = prefix.lowercased()
                 // Explicit shortcut first, then a correction, then the most
@@ -1851,7 +1874,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // iOS owns SMS/Mail AutoFill. A keyboard extension gets only input traits,
         // never the system's secret code suggestions. Do not inspect the clipboard
         // until the user explicitly taps Paste OTP.
-        if textDocumentProxy.textContentType == .oneTimeCode,
+        if (textDocumentProxy.textContentType == .oneTimeCode || manualOTPMode),
            !emojiMode, !clipboardPanel, !settingsPanel {
             otpActionsVisible = true
             suggestionRequestKey = nil
@@ -2210,6 +2233,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         show("Verification code pasted")
     }
 
+    private func showOTPChoices() {
+        // This explicit button also works when an app forgot to mark its code
+        // field as .oneTimeCode. It never reads the clipboard automatically.
+        guard !OTPInbox.availableCandidates().isEmpty else {
+            pasteOneTimeCode()
+            return
+        }
+        manualOTPMode = true
+        refreshSuggestions()
+        show("Tap a VaultBridge code in the suggestion bar")
+    }
+
     private func switchForSystemOTP() {
         // advanceToNextInputMode is the supported API; it may lead to another
         // third-party keyboard, depending on the user's installed keyboard order.
@@ -2223,8 +2258,69 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             recordClip(value); refreshSuggestions()
         }
         else if UIPasteboard.general.hasImages {
+            // UITextDocumentProxy inserts plain text only. The image is already
+            // on the pasteboard; the containing app must handle rich paste.
             show("Image ready: touch and hold the app's text field, then Paste")
         } else { show("Clipboard has no text") }
+    }
+
+    private func stageCopyTarget(_ text: String) {
+        let proxy = textDocumentProxy
+        copyTarget = CopyTarget(text: text, document: proxy.documentIdentifier,
+                                before: proxy.documentContextBeforeInput,
+                                selected: proxy.selectedText,
+                                after: proxy.documentContextAfterInput)
+    }
+
+    private func selectWordForCopy() {
+        let proxy = textDocumentProxy
+        guard proxy.isSecureTextEntry != true else { show("Selection is unavailable in secure fields"); return }
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        func wordCharacter(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == "'" }
+        let leading = String(before.reversed().prefix(while: wordCharacter).reversed())
+        let trailing = String(after.prefix(while: wordCharacter))
+        let nearby = leading + trailing
+        let nativeSelection = proxy.selectedText.flatMap { $0.isEmpty ? nil : $0 }
+        guard let target = nativeSelection ?? (nearby.isEmpty ? nil : nearby) else {
+            show("Place the cursor in a word, then tap Select")
+            return
+        }
+        stageCopyTarget(target)
+        show("Word ready for Copy (keyboard-only selection)")
+    }
+
+    private func selectAllForCopy() {
+        let proxy = textDocumentProxy
+        guard proxy.isSecureTextEntry != true else { show("Selection is unavailable in secure fields"); return }
+        let available = (proxy.documentContextBeforeInput ?? "") +
+            (proxy.selectedText ?? "") + (proxy.documentContextAfterInput ?? "")
+        guard !available.isEmpty else { show("No accessible text in this field"); return }
+        stageCopyTarget(available)
+        // iOS may truncate textDocumentProxy's context. Do not claim to have
+        // selected the entire document or fake the host's selection handles.
+        show("Accessible text ready for Copy; full selection needs the app menu")
+    }
+
+    private func copyText() {
+        guard requireClipboardAccess() else { return }
+        let proxy = textDocumentProxy
+        guard proxy.isSecureTextEntry != true else { show("Copy is unavailable in secure fields"); return }
+        let staged = copyTarget.flatMap { target -> String? in
+            guard target.document == proxy.documentIdentifier,
+                  target.before == proxy.documentContextBeforeInput,
+                  target.selected == proxy.selectedText,
+                  target.after == proxy.documentContextAfterInput else { return nil }
+            return target.text
+        }
+        let nativeSelection = proxy.selectedText.flatMap { $0.isEmpty ? nil : $0 }
+        guard let text = nativeSelection ?? staged else {
+            show("Select a word here or use the app's selection handles first")
+            return
+        }
+        UIPasteboard.general.string = text
+        copyTarget = nil
+        show("Copied to clipboard")
     }
 
     private func requireClipboardAccess(network: Bool = false) -> Bool {

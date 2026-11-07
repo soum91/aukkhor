@@ -76,6 +76,19 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         XCTAssertFalse(keyboard.testingOTPActionVisible)
     }
 
+    func testKeyboardLocalSelectAndSelectAllPreserveHostText() {
+        let (keyboard, proxy) = keyboard()
+        proxy.text = "Hello world"
+        keyboard.testingSelectWordForCopy()
+        XCTAssertEqual(keyboard.testingCopyTarget, "world")
+        XCTAssertEqual(proxy.text, "Hello world", "Selection helpers must not rewrite the host field")
+        keyboard.testingSelectAllForCopy()
+        XCTAssertEqual(keyboard.testingCopyTarget, "Hello world")
+        XCTAssertEqual(proxy.text, "Hello world")
+        keyboard.textDidChange(nil)
+        XCTAssertNil(keyboard.testingCopyTarget, "Host edits invalidate keyboard-local selections")
+    }
+
     func testBackspaceUndoesReplacementAndDoesNotImmediatelyExpandAgain() {
         let (keyboard, proxy) = keyboard()
         keyboard.testingType("omw")
