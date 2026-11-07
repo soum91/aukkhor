@@ -1,0 +1,102 @@
+name: Aukkhor OTP and edit tools branch preview
+
+on:
+  push:
+    branches:
+      - fix/otp-edit-tools-20261107
+    paths:
+      - .github/workflows/branch-preview.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/fix/otp-edit-tools-20261107'
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check installed-version contract
+        run: python3 scripts/check_version_ui.py
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          sips -z 1024 1024 ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png >/dev/null
+          (cd ios && xcodegen generate)
+      - name: Compile unsigned iPhone IPA
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/Aukkhor.xcodeproj -scheme Aukkhor -configuration Release \
+            -sdk iphoneos -derivedDataPath "$RUNNER_TEMP/AukkhorPreviewDerived" \
+            CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION=126 MARKETING_VERSION=0.2.126 build
+          app="$RUNNER_TEMP/AukkhorPreviewDerived/Build/Products/Release-iphoneos/Aukkhor.app"
+          test -d "$app/PlugIns/AukkhorKeyboard.appex"
+          test ! -d "$app/PlugIns/AukkhorShare.appex"
+          test -s "$app/Assets.car"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")" = 0.2.126
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")" = 126
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/PlugIns/AukkhorKeyboard.appex/Info.plist")" = 0.2.126
+          mkdir -p preview "$RUNNER_TEMP/AukkhorPreviewPackage/Payload"
+          cp -R "$app" "$RUNNER_TEMP/AukkhorPreviewPackage/Payload/"
+          (cd "$RUNNER_TEMP/AukkhorPreviewPackage" && zip -qr "$GITHUB_WORKSPACE/preview/Aukkhor-0.2.126-unsigned.ipa" Payload)
+      - name: Write standalone FlareStore preview feed
+        run: |
+          python3 - <<'PY'
+          import datetime, json, pathlib
+
+          branch = 'fix/otp-edit-tools-20261107'
+          base = f'https://raw.githubusercontent.com/soum91/aukkhor/{branch}'
+          path = pathlib.Path('preview/Aukkhor-0.2.126-unsigned.ipa')
+          description = ('Unsigned branch preview. Adds Copy, keyboard-local Select and Select All, '
+                         'and an OTP action that displays available VaultBridge codes on demand. '
+                         'Image paste must still use the containing app context menu. '
+                         'Sign both app and keyboard extension with matching App Group entitlements.')
+          changes = ('Added Copy, Select and Select All actions to the existing tools rail; '
+                     'OTP action now shows available VaultBridge codes in fields not marked for OTP; '
+                     'added a host-text preservation test. No touch-routing or theme changes.')
+          date = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds').replace('+00:00', 'Z')
+          version = {
+              'version': '0.2.126', 'buildVersion': '126', 'date': date,
+              'localizedDescription': description, 'changelog': changes,
+              'downloadURL': base + '/preview/' + path.name,
+              'size': path.stat().st_size, 'minOSVersion': '16.0'
+          }
+          feed = {
+              'name': 'Aukkhor OTP/Edit Preview',
+              'identifier': 'dev.soum91.aukkhor.otp-edit-preview.source',
+              'subtitle': 'Separate Aukkhor branch test feed',
+              'description': description,
+              'sourceURL': base + '/preview/repo.json',
+              'iconURL': base + '/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png',
+              'apps': [{
+                  'name': 'Aukkhor Preview', 'bundleIdentifier': 'dev.soum91.aukkhor',
+                  'developerName': 'soum91', 'subtitle': 'OTP and edit tools branch',
+                  'localizedDescription': description, 'category': 'utilities',
+                  'iconURL': base + '/ios/Assets.xcassets/AppIcon.appiconset/AukkhorIcon.png',
+                  'versions': [version], 'version': version['version'],
+                  'buildVersion': version['buildVersion'], 'downloadURL': version['downloadURL'],
+                  'size': version['size'], 'minOSVersion': version['minOSVersion'],
+                  'versionDate': date, 'versionDescription': description
+              }]
+          }
+          pathlib.Path('preview/repo.json').write_text(json.dumps(feed, indent=2) + '\n', encoding='utf-8')
+          PY
+      - name: Publish only to the preview branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add preview/Aukkhor-0.2.126-unsigned.ipa preview/repo.json
+          if git diff --cached --quiet; then
+            echo 'Preview files are already current.'
+          else
+            git commit -m 'preview: publish Aukkhor 0.2.126 IPA and FlareStore feed [skip ci]'
+            git push origin HEAD:refs/heads/fix/otp-edit-tools-20261107
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Aukkhor-OTP-Edit-Preview-0.2.126
+          path: |
+            preview/Aukkhor-0.2.126-unsigned.ipa
+            preview/repo.json
