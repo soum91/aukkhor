@@ -2054,8 +2054,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         switch inserted {
         case .ordinary:
             // A long press should move the caret, not leave an extra Space
-            // or a newly expanded text replacement behind.
+            // or a newly expanded text replacement behind. The first
+            // Backspace removes the Space; a second reverts the expansion.
             backspace(refresh: false)
+            if armedRevert != nil { backspace(refresh: false) }
         case .doubleSpacePeriod:
             proxyDelete()
             proxyDelete()
