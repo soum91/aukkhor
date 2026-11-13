@@ -1,5 +1,13 @@
 # Changelog
 
+## [v0.2.129] - 2026-11-13
+
+## Verified changes since v0.2.128
+
+- Add Undo and Redo to the tools column ([`bddbced2`](https://github.com/soum91/aukkhor/commit/bddbced20c277ed761396144d893b63f99fc2cc5); `ios/Keyboard/KeyboardViewController.swift`, `ios/Tests/KeyboardBehaviorTests.swift`)
+
+[Inspect exact code changes](https://github.com/soum91/aukkhor/compare/v0.2.128...v0.2.129)
+
 ## [v0.2.128] - 2026-11-13
 
 ## Verified changes since v0.2.125
