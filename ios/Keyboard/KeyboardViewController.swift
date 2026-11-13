@@ -16,7 +16,9 @@ private struct TypingOptions {
     let sounds = KeyboardPreferences.keySounds
     let suggestions = KeyboardPreferences.suggestions
     let doubleSpace = KeyboardPreferences.doubleSpacePeriod
-    let glide = KeyboardPreferences.experimentalGlide
+    // Glide typing is retired: a drag on Space moves the cursor instead, and
+    // glide's pan recognizer also disabled the fast direct touch routing.
+    let glide = false
     let autoCaps = KeyboardPreferences.autoCapitalize
 }
 
@@ -75,6 +77,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var replacements: [String: String] = [:]
     private var dragCaretOffset = 0
     private var dragStartX: CGFloat = 0
+    // Space-bar trackpad, driven from the root touch monitor so it does not
+    // depend on a gesture recognizer winning against the key routing.
+    private weak var spaceButton: UIButton?
+    private var trackpadTouch: ObjectIdentifier?
+    private var trackpadStartX: CGFloat = 0
+    private var trackpadSteps = 0
+    private var trackpadActive = false
+    private var trackpadHold: DispatchWorkItem?
     private var glideStartKey = ""
     private var glideKeys = ""
     private var hasPhotoBackground = false
@@ -263,17 +273,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // public callback while leaving native controls and touch-up intact.
         rootTouchMonitor.onTouchBegan = { [weak self] touch in
             self?.handleRootTouchDown(touch)
+            self?.beginSpaceTrackpad(touch)
         }
         // Release the key from here too: if the host swallows the touch's end
         // before it reaches the router, the key would otherwise stay latched.
         rootTouchMonitor.onTouchMoved = { [weak self] touch in
-            guard let self, self.interactionHost.directTouchRoutingEnabled else { return }
+            guard let self else { return }
+            if ObjectIdentifier(touch) == self.trackpadTouch { self.moveSpaceTrackpad(touch); return }
+            guard self.interactionHost.directTouchRoutingEnabled else { return }
             self.interactionHost.recoverMergedFinger(
                 for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost),
                 previous: touch.previousLocation(in: self.interactionHost))
         }
         rootTouchMonitor.onTouchEnded = { [weak self] touch, cancelled in
             guard let self else { return }
+            if ObjectIdentifier(touch) == self.trackpadTouch { self.endSpaceTrackpad() }
             self.interactionHost.finishTrackedDirectKey(
                 for: ObjectIdentifier(touch), at: touch.location(in: self.interactionHost),
                 cancelled: cancelled)
@@ -520,13 +534,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         button.setTitle(title, for: .normal)
         // Pop up typed characters, not controls (Shift, Delete, Space, 123...).
-        if immediateInput, title.count == 1, !["⇧", "⇪", "⌫", "😊", "🌐", "⚙"].contains(title) {
+        if immediateInput, title.count == 1, !["⇧", "⇪", "⌫", "😊", "🌐", "⚙", "⌄"].contains(title) {
             button.onHighlightChanged = { [weak self] highlighted, key in
                 self?.updateKeyPopup(for: key, highlighted: highlighted)
             }
         }
         let symbols = ["⇧": "shift", "⇪": "shift.fill", "⌫": "delete.left",
-                       "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape"]
+                       "return": "return", "🌐": "globe", "😊": "face.smiling", "⚙": "gearshape",
+                       "⌄": "keyboard.chevron.compact.down"]
         if let name = symbols[title], let icon = UIImage(systemName: name) {
             button.setTitle(nil, for: .normal)
             button.setImage(icon, for: .normal)
@@ -913,12 +928,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         settingsGear.addGestureRecognizer(debugHold)
         settingsGear.accessibilityHint = "Tap for settings or hold to run the touch debugger"
         strip.addArrangedSubview(settingsGear)
+        let collapse = stripButton("⌄", action: { [weak self] in
+            self?.commitBuffer()
+            self?.dismissKeyboard()
+        })
+        collapse.accessibilityLabel = "Hide keyboard"
+        strip.addArrangedSubview(collapse)
         return strip
     }
 
     private func buildKeys() {
         interactionHost.cancelActiveTouches()
         stopDelete()
+        if trackpadActive { endSpaceTrackpad() } else { stack.alpha = 1 }
         highlightedLensButton = nil
         pressLens.isHidden = true
         keyPopups.forEach { $0.hide() }
@@ -1024,9 +1046,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 button.accessibilityLabel = "Space"
                 button.titleLabel?.font = .systemFont(ofSize: 16)
                 button.setContentHuggingPriority(.defaultLow, for: .horizontal)
-                let gesture = UILongPressGestureRecognizer(target: self, action: #selector(moveCaret(_:)))
-                gesture.minimumPressDuration = 0.35
-                button.addGestureRecognizer(gesture)
+                spaceButton = button
+                if isPreview {
+                    // The in-app preview has no root monitor; keep the hold gesture there.
+                    let gesture = UILongPressGestureRecognizer(target: self, action: #selector(moveCaret(_:)))
+                    gesture.minimumPressDuration = 0.35
+                    button.addGestureRecognizer(gesture)
+                }
             } else {
                 button.widthAnchor.constraint(equalTo: bottom.widthAnchor,
                     multiplier: label == "return" ? 0.24 : 0.12).isActive = true
@@ -1703,13 +1729,46 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } : nil
         // Never autocorrect acronyms, mixed-case words, or manual Shift input.
         let suggestion = shortcut ?? (allowCorrection && current == current.lowercased()
-            ? KeyboardSuggestions.correction(current, replacements: [:]) : nil)
+            ? (KeyboardSuggestions.correction(current, replacements: [:]) ?? spellingCorrection(for: current))
+            : nil)
         guard let suggestion, suggestion != current else { return }
         // Autocorrect must never introduce uppercase characters. Explicit
         // multiword shortcuts remain available under Replacements: On.
         if shortcut == nil && suggestion != suggestion.lowercased() { return }
         replaceWord(current, with: suggestion)
         pendingReplacement = (current, suggestion + delimiter, textDocumentProxy.documentIdentifier)
+    }
+
+    // iOS's spelling dictionary, conservatively: only clear misspellings of
+    // three or more letters, and only to a guess within a small edit distance,
+    // so names and slang are left alone more often than not.
+    private func spellingCorrection(for word: String) -> String? {
+        guard let language = checkerLanguage, word.count >= 3,
+              word.allSatisfy({ $0.isLetter || $0 == "'" }) else { return nil }
+        let range = NSRange(location: 0, length: (word as NSString).length)
+        guard textChecker.rangeOfMisspelledWord(in: word, range: range, startingAt: 0,
+                                                wrap: false, language: language).location != NSNotFound,
+              let guess = textChecker.guesses(forWordRange: range, in: word, language: language)?.first,
+              guess == guess.lowercased(), !guess.contains(" ") else { return nil }
+        let limit = word.count <= 4 ? 1 : 2
+        return Self.editDistance(word, guess) <= limit ? guess : nil
+    }
+
+    static func editDistance(_ a: String, _ b: String) -> Int {
+        let a = Array(a), b = Array(b)
+        guard !a.isEmpty else { return b.count }
+        guard !b.isEmpty else { return a.count }
+        var row = Array(0...b.count)
+        for i in 1...a.count {
+            var previous = row[0]
+            row[0] = i
+            for j in 1...b.count {
+                let saved = row[j]
+                row[j] = a[i - 1] == b[j - 1] ? previous : min(previous, row[j - 1], row[j]) + 1
+                previous = saved
+            }
+        }
+        return row[b.count]
     }
 
     private func applySuggestion(_ value: String) {
@@ -1881,6 +1940,57 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         contextRefreshWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.07, execute: work)
+    }
+
+    // Hold Space (~0.3 s) or drag sideways along it: the keyboard becomes a
+    // trackpad and the finger can roam anywhere until it lifts.
+    private func beginSpaceTrackpad(_ touch: UITouch) {
+        guard trackpadTouch == nil, let space = spaceButton, space.window != nil, !space.isHidden,
+              space.bounds.insetBy(dx: -4, dy: -6).contains(touch.location(in: space)) else { return }
+        trackpadTouch = ObjectIdentifier(touch)
+        trackpadStartX = touch.location(in: view).x
+        trackpadSteps = 0
+        trackpadActive = false
+        let hold = DispatchWorkItem { [weak self] in self?.activateSpaceTrackpad() }
+        trackpadHold = hold
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: hold)
+    }
+
+    private func activateSpaceTrackpad() {
+        guard trackpadTouch != nil, !trackpadActive else { return }
+        trackpadHold?.cancel()
+        trackpadActive = true
+        undoSpaceForCaretMovement()
+        commitBuffer()
+        triggerHaptic(force: true)
+        // Fade the keys like iOS so it is obvious the keyboard is a trackpad.
+        UIView.animate(withDuration: 0.12) { self.stack.alpha = 0.35 }
+    }
+
+    private func moveSpaceTrackpad(_ touch: UITouch) {
+        let x = touch.location(in: view).x
+        if !trackpadActive {
+            guard abs(x - trackpadStartX) > 14 else { return }
+            activateSpaceTrackpad()
+            trackpadStartX = x
+            return
+        }
+        let steps = Int((x - trackpadStartX) / 9)
+        let delta = steps - trackpadSteps
+        guard delta != 0 else { return }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: delta)
+        trackpadSteps = steps
+    }
+
+    private func endSpaceTrackpad() {
+        trackpadHold?.cancel()
+        trackpadHold = nil
+        trackpadTouch = nil
+        guard trackpadActive else { return }
+        trackpadActive = false
+        UIView.animate(withDuration: 0.12) { self.stack.alpha = 1 }
+        updateAutoShift()
+        refreshSuggestions()
     }
 
     @objc private func moveCaret(_ recognizer: UILongPressGestureRecognizer) {

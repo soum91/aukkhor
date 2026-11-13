@@ -798,6 +798,31 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "the ")
     }
+    func testAutocorrectUsesTheSystemDictionaryConservatively() {
+        let (keyboard, proxy) = keyboard()
+        KeyboardPreferences.autocorrect = true
+        KeyboardPreferences.textReplacement = false
+        defer { KeyboardPreferences.autocorrect = false }
+        keyboard.testingType("recieve")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "receive ", "A clear misspelling outside the starter table is fixed")
+        proxy.text = ""
+        keyboard.testingType("ok")
+        keyboard.testingType(" ")
+        XCTAssertEqual(proxy.text, "ok ", "Short words are never touched")
+        XCTAssertEqual(KeyboardViewController.editDistance("recieve", "receive"), 2)
+        XCTAssertEqual(KeyboardViewController.editDistance("dont", "don't"), 1)
+    }
+
+    func testCollapseButtonIsAlwaysInTheTopStrip() throws {
+        let (keyboard, _) = keyboard()
+        func buttons(_ view: UIView) -> [UIButton] {
+            (view as? UIButton).map { [$0] } ?? view.subviews.flatMap { buttons($0) }
+        }
+        XCTAssertNotNil(buttons(keyboard.view).first { $0.accessibilityLabel == "Hide keyboard" },
+                        "Permanent collapse button in the top strip")
+    }
+
     func testHeldDeleteRepeatsToEmptyAndStopsOnRelease() async throws {
         let (keyboard, proxy) = keyboard()
         proxy.text = "abcdefgh"

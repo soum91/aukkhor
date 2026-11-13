@@ -122,7 +122,6 @@ private final class KeyboardSystemTestController: UIViewController {
     @State private var autocorrect = KeyboardPreferences.autocorrect
     @State private var textReplacement = KeyboardPreferences.textReplacement
     @State private var doubleSpace = KeyboardPreferences.doubleSpacePeriod
-    @State private var experimentalGlide = KeyboardPreferences.experimentalGlide
     @State private var keyPopups = KeyboardPreferences.keyPopups
     @State private var autoCaps = KeyboardPreferences.autoCapitalize
     @State private var selectedBackground: PhotosPickerItem?
@@ -299,11 +298,9 @@ private final class KeyboardSystemTestController: UIViewController {
                         .onChange(of: keyPopups) { KeyboardPreferences.keyPopups = $0 }
                     Toggle("Double space for period", isOn: $doubleSpace)
                         .onChange(of: doubleSpace) { KeyboardPreferences.doubleSpacePeriod = $0 }
-                    Toggle("Experimental English glide typing", isOn: $experimentalGlide)
-                        .onChange(of: experimentalGlide) { KeyboardPreferences.experimentalGlide = $0 }
-                    Text("Glide decoding is an early local implementation, not Gboard's mature gesture model. Leave it off if it interferes with normal typing.")
+                    Text("Cursor: hold Space, or drag sideways along it, and the keyboard becomes a trackpad until you lift your finger. This replaces glide typing.")
                         .font(.caption).foregroundStyle(.secondary)
-                    Text("Suggestions use a local starter dictionary and available iOS text replacements. Typing is not uploaded or used for training.")
+                    Text("Suggestions and autocorrect use iOS's on-device spelling dictionary and your iOS text replacements. Typing is not uploaded or used for training.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
