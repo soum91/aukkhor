@@ -130,6 +130,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // a second Backspace straight after restores what was typed.
     private var pendingReplacement: (original: String, inserted: String, document: UUID, delimiter: String)?
     private var armedRevert: (original: String, replacement: String, document: UUID)?
+    // Keyboard-side undo. iOS gives keyboards no access to the app's undo
+    // manager, so this records what Aukkhor itself inserted or deleted.
+    private struct TextEdit {
+        enum Kind { case insert, delete }
+        var kind: Kind
+        var text: String
+        let document: UUID
+        var at: TimeInterval
+    }
+    private var undoStack: [TextEdit] = []
+    private var redoStack: [TextEdit] = []
     private var suppressedReplacement: String?
     private var touchDebuggerRunning = false
     private var touchSamples: [KeyboardTouchSample] = []
@@ -509,7 +520,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         case .ended:
             if let word = KeyboardSuggestions.glideCandidate(for: glideKeys) {
                 commitBuffer()
-                textDocumentProxy.insertText(word + " ")
+                proxyInsert(word + " ")
                 show("Glide: \(word)")
             } else if glideKeys.count > 2 {
                 show("No reliable glide match. Try tapping or a shorter swipe.")
@@ -827,6 +838,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             ("Paste", { [weak self] in self?.paste() }),
             ("OTP", { [weak self] in self?.pasteOneTimeCode() }),
             ("Cut", { [weak self] in self?.cut() }),
+            ("Undo", { [weak self] in self?.undoEdit() }),
+            ("Redo", { [weak self] in self?.redoEdit() }),
             ("Define", { [weak self] in self?.define() }),
             ("Speak", { [weak self] in self?.speak() }),
             ("Clips", { [weak self] in self?.toggleClipboardPanel() }),
@@ -1354,7 +1367,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         insert.setTitle("Insert text", for: .normal)
         insert.addAction(UIAction { [weak self] _ in
             guard let self, !self.lastTouchDebugReport.isEmpty else { return }
-            self.textDocumentProxy.insertText(self.lastTouchDebugReport)
+            self.proxyInsert(self.lastTouchDebugReport)
             status.text = "Inserted in the current text field. Select it there to copy."
         }, for: .touchUpInside)
         let done = UIButton(type: .system)
@@ -1629,7 +1642,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func insertEmoji(_ emoji: String) {
         commitBuffer()
-        textDocumentProxy.insertText(emoji)
+        proxyInsert(emoji)
         refreshSuggestions()
     }
 
@@ -1657,7 +1670,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             let title = String(value.prefix(37)).replacingOccurrences(of: "\n", with: " ")
             stack.addArrangedSubview(row([(title, { [weak self] in
                 self?.commitBuffer()
-                self?.textDocumentProxy.insertText(value)
+                self?.proxyInsert(value)
                 self?.clipboardPanel = false
                 self?.buildKeys()
             })]))
@@ -1712,8 +1725,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func replaceWord(_ original: String, with replacement: String) {
         guard !original.isEmpty else { return }
         commitBuffer()
-        for _ in original { textDocumentProxy.deleteBackward() }
-        textDocumentProxy.insertText(replacement)
+        for _ in original { proxyDelete() }
+        proxyInsert(replacement)
     }
 
     private func applyTextReplacementIfNeeded(delimiter: String) {
@@ -1782,7 +1795,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } else {
             replaceWord(currentWord(), with: value)
         }
-        textDocumentProxy.insertText(" ")
+        proxyInsert(" ")
         if shift && !capsLock { shift = false; autoShifted = false; refreshShiftKeys() }
         updateAutoShift()
         refreshSuggestions()
@@ -1829,7 +1842,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                         if index < self.otpCandidates.count {
                             if let code = OTPInbox.consume(self.otpCandidates[index]) {
                                 self.commitBuffer()
-                                self.textDocumentProxy.insertText(code)
+                                self.proxyInsert(code)
                                 self.show("VaultBridge code filled")
                                 self.refreshSuggestions()
                             }
@@ -2044,20 +2057,99 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // or a newly expanded text replacement behind.
             backspace(refresh: false)
         case .doubleSpacePeriod:
-            textDocumentProxy.deleteBackward()
-            textDocumentProxy.deleteBackward()
-            textDocumentProxy.insertText(" ")
+            proxyDelete()
+            proxyDelete()
+            proxyInsert(" ")
         }
         lastSpaceTap = .distantPast
     }
 
+    // Every insert/delete Aukkhor performs goes through these two, so Undo
+    // can reverse it. Typing coalesces into word-sized steps like iOS.
+    private func proxyInsert(_ text: String) {
+        textDocumentProxy.insertText(text)
+        recordEdit(.insert, text)
+    }
+
+    private func proxyDelete() {
+        let selected = textDocumentProxy.selectedText ?? ""
+        let removed = selected.isEmpty
+            ? (textDocumentProxy.documentContextBeforeInput?.last.map(String.init) ?? "")
+            : selected
+        textDocumentProxy.deleteBackward()
+        if !removed.isEmpty { recordEdit(.delete, removed) }
+    }
+
+    private func recordEdit(_ kind: TextEdit.Kind, _ text: String) {
+        let document = textDocumentProxy.documentIdentifier
+        let now = ProcessInfo.processInfo.systemUptime
+        redoStack.removeAll()
+        if var last = undoStack.last, last.kind == kind, last.document == document, now - last.at < 2 {
+            switch kind {
+            case .insert:
+                // A new word starts a new step: "hello world" undoes "world" first.
+                let startsWord = last.text.last?.isWhitespace == true && text.first?.isWhitespace == false
+                if !startsWord {
+                    last.text += text; last.at = now
+                    undoStack[undoStack.count - 1] = last
+                    return
+                }
+            case .delete:
+                last.text = text + last.text; last.at = now
+                undoStack[undoStack.count - 1] = last
+                return
+            }
+        }
+        undoStack.append(TextEdit(kind: kind, text: text, document: document, at: now))
+        if undoStack.count > 60 { undoStack.removeFirst() }
+    }
+
+    private func undoEdit() { applyHistory(undo: true) }
+    private func redoEdit() { applyHistory(undo: false) }
+
+    private func applyHistory(undo: Bool) {
+        commitBuffer()
+        pendingReplacement = nil
+        armedRevert = nil
+        let document = textDocumentProxy.documentIdentifier
+        guard var edit = undo ? undoStack.popLast() : redoStack.popLast() else {
+            show(undo ? "Nothing to undo" : "Nothing to redo"); return
+        }
+        guard edit.document == document else {
+            undoStack.removeAll(); redoStack.removeAll()
+            show(undo ? "Nothing to undo in this field" : "Nothing to redo in this field"); return
+        }
+        // Undoing an insert removes it; undoing a delete puts it back. Redo
+        // does the opposite. Raw proxy calls so history is not re-recorded.
+        let removeText = (edit.kind == .insert) == undo
+        if removeText {
+            guard (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(edit.text) else {
+                undoStack.removeAll(); redoStack.removeAll()
+                show("The cursor moved; undo history cleared"); return
+            }
+            for _ in edit.text { textDocumentProxy.deleteBackward() }
+        } else {
+            textDocumentProxy.insertText(edit.text)
+        }
+        edit.at = 0  // never coalesce with what is typed next
+        if undo { redoStack.append(edit) } else { undoStack.append(edit) }
+        triggerHaptic(force: true)
+        updateAutoShift()
+        refreshSuggestions()
+    }
+
+    #if DEBUG
+    func testingUndo() { undoEdit() }
+    func testingRedo() { redoEdit() }
+    #endif
+
     private func insertTypedText(_ value: String) {
         guard touchDebuggerRunning else {
-            textDocumentProxy.insertText(value)
+            proxyInsert(value)
             return
         }
         let started = ProcessInfo.processInfo.systemUptime
-        textDocumentProxy.insertText(value)
+        proxyInsert(value)
         let elapsedMs = Int(max(0, min(10_000,
             (ProcessInfo.processInfo.systemUptime - started) * 1_000)))
         if debugProxyInsertions.count == 160 { debugProxyInsertions.removeFirst() }
@@ -2084,7 +2176,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if value == " " && typingOptions.doubleSpace && mode == .english && !symbols &&
             Date().timeIntervalSince(lastSpaceTap) < 0.45 &&
             (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(" ") {
-            textDocumentProxy.deleteBackward()
+            proxyDelete()
             insertTypedText(". ")
             lastSpaceTap = .distantPast
             return
@@ -2097,7 +2189,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             buffer += value
             let newText = PhoneticBangla.transliterate(buffer)
-            for _ in renderedBuffer { textDocumentProxy.deleteBackward() }
+            for _ in renderedBuffer { proxyDelete() }
             insertTypedText(newText)
             renderedBuffer = newText
         } else {
@@ -2218,8 +2310,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // typed text. Never during a held-delete repeat.
             if !fromRepeat, textDocumentProxy.documentIdentifier == armed.document,
                before.hasSuffix(armed.replacement) {
-                for _ in armed.replacement { textDocumentProxy.deleteBackward() }
-                textDocumentProxy.insertText(armed.original)
+                for _ in armed.replacement { proxyDelete() }
+                proxyInsert(armed.original)
                 suppressedReplacement = armed.original
                 commitBuffer()
                 updateAutoShift()
@@ -2235,7 +2327,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 let replacement = String(undo.inserted.dropLast(delimiterCount))
                 if delimiterCount > 0 && !fromRepeat {
                     // First Backspace: delete only the space/newline.
-                    for _ in 0..<delimiterCount { textDocumentProxy.deleteBackward() }
+                    for _ in 0..<delimiterCount { proxyDelete() }
                     armedRevert = (undo.original, replacement, undo.document)
                     commitBuffer()
                     updateAutoShift()
@@ -2243,8 +2335,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     return
                 } else if delimiterCount == 0 && !fromRepeat {
                     // Nothing typed after it: one Backspace restores the original.
-                    for _ in undo.inserted { textDocumentProxy.deleteBackward() }
-                    textDocumentProxy.insertText(undo.original)
+                    for _ in undo.inserted { proxyDelete() }
+                    proxyInsert(undo.original)
                     suppressedReplacement = undo.original
                     commitBuffer()
                     if refresh { refreshSuggestions() }
@@ -2260,12 +2352,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if mode == .phonetic && !buffer.isEmpty &&
             (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(renderedBuffer) {
             buffer.removeLast()
-            for _ in renderedBuffer { textDocumentProxy.deleteBackward() }
+            for _ in renderedBuffer { proxyDelete() }
             renderedBuffer = PhoneticBangla.transliterate(buffer)
-            textDocumentProxy.insertText(renderedBuffer)
+            proxyInsert(renderedBuffer)
         } else {
             commitBuffer()
-            textDocumentProxy.deleteBackward()
+            proxyDelete()
         }
         updateAutoShift()
         if refresh { refreshSuggestions() }
@@ -2328,7 +2420,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         armedRevert = nil
         // insertText replaces the host's current selection; the extension has
         // no supported API for setting Notes' NSAttributedString attributes.
-        textDocumentProxy.insertText(transformed)
+        proxyInsert(transformed)
         refreshSuggestions()
     }
 
@@ -2338,7 +2430,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         commitBuffer()
         pendingReplacement = nil
         armedRevert = nil
-        textDocumentProxy.insertText(code)
+        proxyInsert(code)
         refreshSuggestions()
         return true
     }
@@ -2365,7 +2457,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func paste() {
         guard requireClipboardAccess() else { return }
         if let value = UIPasteboard.general.string {
-            commitBuffer(); textDocumentProxy.insertText(value)
+            commitBuffer(); proxyInsert(value)
             recordClip(value); refreshSuggestions()
         }
         else if UIPasteboard.general.hasImages {
@@ -2392,7 +2484,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         UIPasteboard.general.string = selected
         recordClip(selected)
         commitBuffer()
-        textDocumentProxy.deleteBackward()
+        proxyDelete()
         show("Cut selected text")
     }
 

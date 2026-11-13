@@ -90,6 +90,26 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "omw ")
     }
+    func testUndoAndRedoStepByWordAndRestoreDeletes() {
+        let (keyboard, proxy) = keyboard()
+        for c in "hello world" { keyboard.testingType(String(c)) }
+        XCTAssertEqual(proxy.text, "hello world")
+        keyboard.testingUndo()
+        XCTAssertEqual(proxy.text, "hello ", "Undo removes the last word")
+        keyboard.testingUndo()
+        XCTAssertEqual(proxy.text, "")
+        keyboard.testingRedo()
+        XCTAssertEqual(proxy.text, "hello ")
+        keyboard.testingDelete()
+        keyboard.testingDelete()
+        XCTAssertEqual(proxy.text, "hell")
+        keyboard.testingUndo()
+        XCTAssertEqual(proxy.text, "hello ", "Undo puts deleted text back")
+        proxy.documentIdentifier = UUID()
+        keyboard.testingUndo()
+        XCTAssertEqual(proxy.text, "hello ", "Never edits a different field")
+    }
+
     func testTypingAfterRemovingTheSpaceKeepsTheReplacement() {
         let (keyboard, proxy) = keyboard()
         keyboard.testingType("omw")
