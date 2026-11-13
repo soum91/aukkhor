@@ -1,5 +1,15 @@
 # Changelog
 
+## [v0.2.130] - 2026-11-13
+
+## Verified changes since v0.2.129
+
+- Holding Space for the cursor still reverts a replacement its Space triggered ([`24112de3`](https://github.com/soum91/aukkhor/commit/24112de35fb8c3c38f3da7ab3875d2d5496f1b78); `ios/Keyboard/KeyboardViewController.swift`)
+- catalog: publish only Aukkhor keyboard 0.2.128 ([`8997a756`](https://github.com/soum91/aukkhor/commit/8997a756b33f2d45397166ecfd1561bbc5c7ac32); `aukkhor-keyboard-v17.json`, `repo.json`, `source.json`)
+- catalog: publish only Aukkhor keyboard 0.2.128 ([`6be1ec84`](https://github.com/soum91/aukkhor/commit/6be1ec84733b5f5b0423f61ceea3adba5fea0532); `aukkhor-keyboard-v17.json`, `repo.json`, `source.json`)
+
+[Inspect exact code changes](https://github.com/soum91/aukkhor/compare/v0.2.129...v0.2.130)
+
 ## [v0.2.129] - 2026-11-13
 
 ## Verified changes since v0.2.128
