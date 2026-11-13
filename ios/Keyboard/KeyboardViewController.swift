@@ -125,7 +125,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var deleteTicks = 0
     private enum SpaceTouchResult { case ordinary, doubleSpacePeriod }
     private var spaceTouchResult: SpaceTouchResult?
-    private var pendingReplacement: (original: String, inserted: String, document: UUID)?
+    // A replacement or autocorrection that can still be undone. The first
+    // Backspace only removes the delimiter typed after it (armed = true);
+    // a second Backspace straight after restores what was typed.
+    private var pendingReplacement: (original: String, inserted: String, document: UUID, delimiter: String)?
+    private var armedRevert: (original: String, replacement: String, document: UUID)?
     private var suppressedReplacement: String?
     private var touchDebuggerRunning = false
     private var touchSamples: [KeyboardTouchSample] = []
@@ -1736,7 +1740,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // multiword shortcuts remain available under Replacements: On.
         if shortcut == nil && suggestion != suggestion.lowercased() { return }
         replaceWord(current, with: suggestion)
-        pendingReplacement = (current, suggestion + delimiter, textDocumentProxy.documentIdentifier)
+        pendingReplacement = (current, suggestion + delimiter, textDocumentProxy.documentIdentifier, delimiter)
     }
 
     // iOS's spelling dictionary, conservatively: only clear misspellings of
@@ -2067,6 +2071,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // tap, even if the user is fast enough to hit Shift again in 350ms.
         lastShiftTap = .distantPast
         pendingReplacement = nil
+        armedRevert = nil
         if value.first?.isLetter == true { suppressedReplacement = nil }
         if emojiMode && emojiSearch {
             if value == "\n" { emojiSearch = false; buildKeys(); return }
@@ -2192,7 +2197,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // A burst of 120 cross-process deleteBackward() calls per second
             // blocked normal taps on actual iPhones. Bound the IPC burst.
             let count = self.deleteTicks > 36 ? 3 : 1
-            for _ in 0..<count { self.backspace(refresh: false) }
+            for _ in 0..<count { self.backspace(refresh: false, fromRepeat: true) }
             if self.deleteTicks % 3 == 0 { self.refreshSuggestions() }
         }
         deleteTimer = timer
@@ -2205,17 +2210,46 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         deleteHeld = false
     }
 
-    private func backspace(refresh: Bool = true) {
-        if let undo = pendingReplacement {
-            pendingReplacement = nil
-            if textDocumentProxy.documentIdentifier == undo.document,
-               (textDocumentProxy.documentContextBeforeInput ?? "").hasSuffix(undo.inserted) {
-                for _ in undo.inserted { textDocumentProxy.deleteBackward() }
-                textDocumentProxy.insertText(undo.original)
-                suppressedReplacement = undo.original
+    private func backspace(refresh: Bool = true, fromRepeat: Bool = false) {
+        let before = textDocumentProxy.documentContextBeforeInput ?? ""
+        if let armed = armedRevert {
+            armedRevert = nil
+            // Second Backspace right after removing the delimiter: restore the
+            // typed text. Never during a held-delete repeat.
+            if !fromRepeat, textDocumentProxy.documentIdentifier == armed.document,
+               before.hasSuffix(armed.replacement) {
+                for _ in armed.replacement { textDocumentProxy.deleteBackward() }
+                textDocumentProxy.insertText(armed.original)
+                suppressedReplacement = armed.original
                 commitBuffer()
+                updateAutoShift()
                 if refresh { refreshSuggestions() }
                 return
+            }
+        }
+        if let undo = pendingReplacement {
+            pendingReplacement = nil
+        armedRevert = nil
+            if textDocumentProxy.documentIdentifier == undo.document, before.hasSuffix(undo.inserted) {
+                let delimiterCount = undo.delimiter.count
+                let replacement = String(undo.inserted.dropLast(delimiterCount))
+                if delimiterCount > 0 && !fromRepeat {
+                    // First Backspace: delete only the space/newline.
+                    for _ in 0..<delimiterCount { textDocumentProxy.deleteBackward() }
+                    armedRevert = (undo.original, replacement, undo.document)
+                    commitBuffer()
+                    updateAutoShift()
+                    if refresh { refreshSuggestions() }
+                    return
+                } else if delimiterCount == 0 && !fromRepeat {
+                    // Nothing typed after it: one Backspace restores the original.
+                    for _ in undo.inserted { textDocumentProxy.deleteBackward() }
+                    textDocumentProxy.insertText(undo.original)
+                    suppressedReplacement = undo.original
+                    commitBuffer()
+                    if refresh { refreshSuggestions() }
+                    return
+                }
             }
         }
         if emojiMode && emojiSearch {
@@ -2291,6 +2325,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard transformed != text else { return }
         commitBuffer()
         pendingReplacement = nil
+        armedRevert = nil
         // insertText replaces the host's current selection; the extension has
         // no supported API for setting Notes' NSAttributedString attributes.
         textDocumentProxy.insertText(transformed)
@@ -2302,6 +2337,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard let code = CodeExtractor.extract(text) else { return false }
         commitBuffer()
         pendingReplacement = nil
+        armedRevert = nil
         textDocumentProxy.insertText(code)
         refreshSuggestions()
         return true

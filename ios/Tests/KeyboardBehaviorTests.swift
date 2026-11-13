@@ -81,10 +81,23 @@ private final class MemoryTextProxy: NSObject, UITextDocumentProxy {
         keyboard.testingType("omw")
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "on my way ")
+        // First Backspace only removes the space; the expansion stays.
+        keyboard.testingDelete()
+        XCTAssertEqual(proxy.text, "on my way")
+        // A second Backspace straight after restores what was typed.
         keyboard.testingDelete()
         XCTAssertEqual(proxy.text, "omw")
         keyboard.testingType(" ")
         XCTAssertEqual(proxy.text, "omw ")
+    }
+    func testTypingAfterRemovingTheSpaceKeepsTheReplacement() {
+        let (keyboard, proxy) = keyboard()
+        keyboard.testingType("omw")
+        keyboard.testingType(" ")
+        keyboard.testingDelete()
+        keyboard.testingType("!")
+        keyboard.testingDelete()
+        XCTAssertEqual(proxy.text, "on my way", "Only an immediate second Backspace reverts")
     }
     func testReplacementUndoDoesNotEditAnotherDocument() {
         let (keyboard, proxy) = keyboard()
